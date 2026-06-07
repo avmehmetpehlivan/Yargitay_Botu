@@ -1,0 +1,37 @@
+# ── Bağımlılıklar ──────────────────────────────────────────────
+node_modules/
+
+# ── Build çıktısı (kaynak koddan `npm run build` ile üretilir) ──
+dist/
+# Web Store paketi ve paketlenmiş uzantı
+*.zip
+*.crx
+
+# ── Uzantı imza anahtarı — ASLA paylaşılmamalı ─────────────────
+*.pem
+
+# ── Ortam değişkenleri / sırlar ────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ── Test / araç çıktıları ──────────────────────────────────────
+coverage/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ── İşletim sistemi / editör ───────────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# ── Claude Code yerel dosyaları ────────────────────────────────
+.claude/
+CLAUDE.md
+
+# ── Not: package-lock.json bilinçli olarak takip ediliyor ──────
+# (tekrarlanabilir kurulum için commit edilmesi önerilir)
