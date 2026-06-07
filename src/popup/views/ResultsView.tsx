@@ -166,7 +166,7 @@ export function ResultsView() {
 
           {/* Sıralama */}
           <label className="flex flex-wrap items-center gap-1 text-xs text-slate-500">
-            Arama sonucu elde edilen {visible.length} kararı sırala:
+            Listelenen {visible.length} kararı sırala:
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
