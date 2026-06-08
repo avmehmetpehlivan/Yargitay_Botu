@@ -248,7 +248,7 @@ export function ResultsView() {
               loading={pdfState === 'generating'}
               disabled={selected.size === 0 || pdfState === 'generating' || exportState === 'busy'}
             >
-              PDF ({selected.size})
+              PDF ({selected.size} karar)
             </Button>
             <Button
               className="flex-1"
