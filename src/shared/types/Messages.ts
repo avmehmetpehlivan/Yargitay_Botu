@@ -1,5 +1,4 @@
 import type { Decision, DecisionMetadata, ScrapingJob } from './Decision';
-import type { SavedSearch } from './SavedSearch';
 import type { SearchCriteria } from './SearchCriteria';
 
 // ─── Action sabitleri ────────────────────────────────────────────────────────
@@ -14,7 +13,6 @@ export const MSG = {
   UPDATE_SAVED_LABEL:    'UPDATE_SAVED_LABEL',
   DELETE_SAVED_SEARCH:   'DELETE_SAVED_SEARCH',
   DELETE_HISTORY_ITEM:   'DELETE_HISTORY_ITEM',
-  CHECK_NEW_DECISIONS:   'CHECK_NEW_DECISIONS',
 
   // Background → Content Script
   SCRAPE_METADATA:       'SCRAPE_METADATA',
@@ -40,8 +38,7 @@ export type PopupToBackground =
   | { action: 'SAVE_SEARCH'; keywords: string[]; label?: string; criteria?: SearchCriteria }
   | { action: 'UPDATE_SAVED_LABEL'; id: string; label: string }
   | { action: 'DELETE_SAVED_SEARCH'; id: string }
-  | { action: 'DELETE_HISTORY_ITEM'; id: string }
-  | { action: 'CHECK_NEW_DECISIONS'; saved: SavedSearch; tabId: number };
+  | { action: 'DELETE_HISTORY_ITEM'; id: string };
 
 // ─── Discriminated union: Background → Content Script ────────────────────────
 

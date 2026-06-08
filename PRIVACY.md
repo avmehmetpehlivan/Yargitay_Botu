@@ -1,4 +1,4 @@
-# Gizlilik Politikası — Yargıtay Karar Asistanı
+# Gizlilik Politikası — Yargıtay Karar Arama Asistanı
 
 _Son güncelleme: 7 Haziran 2026_
 

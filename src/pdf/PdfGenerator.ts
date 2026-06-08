@@ -53,7 +53,7 @@ export async function generatePdf(
 
     footer: (currentPage, pageCount) => ({
       columns: [
-        { text: `Yargıtay Karar Asistanı — ${formatDateTimeTR(isoNow())}`, fontSize: 8, color: '#94a3b8', margin: [56, 0, 0, 0] },
+        { text: `Yargıtay Karar Arama Asistanı — ${formatDateTimeTR(isoNow())}`, fontSize: 8, color: '#94a3b8', margin: [56, 0, 0, 0] },
         { text: `${currentPage} / ${pageCount}`, fontSize: 8, color: '#94a3b8', alignment: 'right', margin: [0, 0, 56, 0] },
       ],
     }),
@@ -72,7 +72,7 @@ function buildCoverPage(decisions: Decision[], keywords: string[], subtitle?: st
   return {
     stack: [
       { text: '\n\n\n\n' },
-      { text: 'Yargıtay Karar Asistanı', style: 'coverTitle' },
+      { text: 'Yargıtay Karar Arama Asistanı', style: 'coverTitle' },
       ...(subtitle ? [{ text: subtitle, style: 'coverSub' }] : []),
       { text: '\n' },
       { text: `Arama: "${keywords.join(' • ')}"`, style: 'coverSub' },
@@ -112,7 +112,7 @@ export async function generateSummaryPdf(
     ],
     footer: (currentPage, pageCount) => ({
       columns: [
-        { text: `Yargıtay Karar Asistanı — ${formatDateTimeTR(isoNow())}`, fontSize: 8, color: '#94a3b8', margin: [56, 0, 0, 0] },
+        { text: `Yargıtay Karar Arama Asistanı — ${formatDateTimeTR(isoNow())}`, fontSize: 8, color: '#94a3b8', margin: [56, 0, 0, 0] },
         { text: `${currentPage} / ${pageCount}`, fontSize: 8, color: '#94a3b8', alignment: 'right', margin: [0, 0, 56, 0] },
       ],
     }),

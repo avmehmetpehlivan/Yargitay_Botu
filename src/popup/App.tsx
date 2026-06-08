@@ -5,14 +5,12 @@ import { ResultsView } from './views/ResultsView';
 import { HistoryView } from './views/HistoryView';
 import { SavedView }   from './views/SavedView';
 import { SettingsView } from './views/SettingsView';
-import { useNewDecisions } from './hooks/useNewDecisions';
 import appIcon from '../../extension-icon.svg';
 
 export type View = 'search' | 'results' | 'history' | 'saved' | 'settings';
 
 export function App() {
   const [activeView, setActiveView] = useState<View>('search');
-  const { totalNew } = useNewDecisions();
 
   return (
     <div className="flex h-[580px] w-[420px] flex-col bg-slate-50">
@@ -20,7 +18,7 @@ export function App() {
       <header className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3">
         <img src={appIcon} alt="" className="h-8 w-8 shrink-0" />
         <div className="min-w-0 flex-1">
-          <h1 className="text-sm font-semibold text-slate-900">Yargıtay Karar Asistanı</h1>
+          <h1 className="text-sm font-semibold text-slate-900">Yargıtay Karar Arama Asistanı</h1>
           <p className="text-xs text-slate-400">karararama.yargitay.gov.tr</p>
         </div>
         <button
@@ -51,11 +49,7 @@ export function App() {
       </main>
 
       {/* Alt nav */}
-      <Navigation
-        active={activeView}
-        onSelect={setActiveView}
-        newDecisionCount={totalNew}
-      />
+      <Navigation active={activeView} onSelect={setActiveView} />
     </div>
   );
 }

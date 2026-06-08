@@ -4,7 +4,6 @@ import type { View } from '../../App';
 interface NavigationProps {
   active: View;
   onSelect: (v: View) => void;
-  newDecisionCount: number;
 }
 
 const TABS: { id: View; label: string; icon: string }[] = [
@@ -14,7 +13,7 @@ const TABS: { id: View; label: string; icon: string }[] = [
   { id: 'saved',   label: 'Kayıtlı',  icon: '⭐' },
 ];
 
-export function Navigation({ active, onSelect, newDecisionCount }: NavigationProps) {
+export function Navigation({ active, onSelect }: NavigationProps) {
   return (
     <nav className="flex border-t border-slate-200 bg-white">
       {TABS.map((tab) => (
@@ -30,11 +29,6 @@ export function Navigation({ active, onSelect, newDecisionCount }: NavigationPro
         >
           <span className="text-base leading-none">{tab.icon}</span>
           <span>{tab.label}</span>
-          {tab.id === 'saved' && newDecisionCount > 0 && (
-            <span className="absolute right-3 top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
-              {newDecisionCount > 9 ? '9+' : newDecisionCount}
-            </span>
-          )}
         </button>
       ))}
     </nav>

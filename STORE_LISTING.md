@@ -6,7 +6,7 @@ Bu dosya, Web Store Developer Dashboard'da ilgili alanlara kopyalanmak içindir.
 ---
 
 ## Ürün adı
-Yargıtay Karar Asistanı
+Yargıtay Karar Arama Asistanı
 
 ## Kategori
 Üretkenlik (Productivity)
@@ -15,10 +15,10 @@ Yargıtay Karar Asistanı
 Türkçe
 
 ## Kısa açıklama (manifest.description ile aynı, ≤132 karakter)
-Yargıtay kararlarını toplu toplayın; istatistik görün, filtreleyin ve PDF, Word veya Excel (CSV) olarak dışa aktarın.
+Avukatlar için Yargıtay karar arama asistanı: toplu sonuç, istatistik grafikleri ve PDF/Word/Excel dışa aktarma.
 
 ## Detaylı açıklama (mağaza "Description" alanı)
-Yargıtay Karar Asistanı, avukatların karararama.yargitay.gov.tr üzerindeki Yargıtay
+Yargıtay Karar Arama Asistanı, avukatların karararama.yargitay.gov.tr üzerindeki Yargıtay
 kararlarıyla çalışmasını hızlandırır. Sitedeki resmi arama servisini kullanır; yapay zekâ
 veya hukuki yorum yoktur — yalnızca objektif, sayısal çıktılar sunar.
 
@@ -38,6 +38,9 @@ veya hukuki yorum yoktur — yalnızca objektif, sayısal çıktılar sunar.
 Gizlilik: Verileriniz cihazınızdan çıkmaz. Hiçbir analitik, reklam veya üçüncü taraf
 paylaşımı yoktur. Uzantı yalnızca, zaten kullandığınız resmi Yargıtay sitesiyle iletişim kurar.
 
+Not: Bu, bağımsız bir yardımcı araçtır. Yargıtay ile resmi bir bağlantısı, ortaklığı veya
+onayı yoktur.
+
 ---
 
 ## Tek amaç beyanı (Single purpose)
@@ -56,8 +59,6 @@ https://github.com/avmehmetpehlivan/Yargitay_Botu/blob/main/PRIVACY.md
 - tabs — Aktif sekmenin Yargıtay Karar Arama sayfası olup olmadığını kontrol etmek ve doğru
   sekmede çalışmak.
 - scripting — Aramayı yürüten içerik betiğini, gerektiğinde Yargıtay sekmesine eklemek.
-- alarms — Kayıtlı aramalar için periyodik "yeni karar var mı" kontrolünü zamanlamak.
-- notifications — Kayıtlı bir aramada yeni karar çıktığında kullanıcıyı bilgilendirmek.
 - host_permissions (karararama.yargitay.gov.tr) — Aramaları yalnızca bu resmi sitenin
   servisleri üzerinden yapmak. Başka hiçbir siteye erişilmez.
 

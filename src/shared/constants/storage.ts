@@ -22,9 +22,3 @@ export function clampMaxDecisions(n: number): number {
   if (!Number.isFinite(n) || n < 1) return 500;
   return Math.min(Math.floor(n), STORAGE_LIMITS.maxDecisionsPerSearch);
 }
-
-// Alarm adı kayıtlı arama id'sinden türetilir
-export const alarmName = (savedId: string) => `new-decisions:${savedId}`;
-
-// Yeni karar kontrolü sıklığı (dakika)
-export const NEW_DECISION_CHECK_INTERVAL_MINUTES = 1440; // 24 saat

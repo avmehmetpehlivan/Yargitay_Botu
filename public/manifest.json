@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "Yargıtay Karar Asistanı",
+  "name": "Yargıtay Karar Arama Asistanı",
   "version": "1.0.0",
-  "description": "Yargıtay kararlarını toplu toplayın; istatistik görün, filtreleyin ve PDF, Word veya Excel (CSV) olarak dışa aktarın.",
-  "permissions": ["storage", "alarms", "downloads", "notifications", "tabs", "scripting"],
+  "description": "Avukatlar için Yargıtay karar arama asistanı: toplu sonuç, istatistik grafikleri ve PDF/Word/Excel dışa aktarma.",
+  "permissions": ["storage", "downloads", "tabs", "scripting"],
   "host_permissions": ["*://karararama.yargitay.gov.tr/*"],
   "icons": {
     "16": "icons/extension-icon16.png",
@@ -12,7 +12,7 @@
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Yargıtay Karar Asistanı",
+    "default_title": "Yargıtay Karar Arama Asistanı",
     "default_icon": {
       "16": "icons/extension-icon16.png",
       "48": "icons/extension-icon48.png",

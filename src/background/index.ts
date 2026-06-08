@@ -1,6 +1,5 @@
 import { ScrapingOrchestrator } from './ScrapingOrchestrator';
 import { StorageManager } from './StorageManager';
-import { AlarmScheduler } from './AlarmScheduler';
 import { MessageRouter } from './MessageRouter';
 import type { ContentToBackground } from '../shared/types/Messages';
 
@@ -8,8 +7,7 @@ import type { ContentToBackground } from '../shared/types/Messages';
 
 const storage     = new StorageManager();
 const orchestrator = new ScrapingOrchestrator();
-const scheduler   = new AlarmScheduler(storage);
-const router      = new MessageRouter(orchestrator, storage, scheduler);
+const router      = new MessageRouter(orchestrator, storage);
 
 // ─── Message listener ─────────────────────────────────────────────────────────
 
@@ -26,16 +24,4 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // Popup mesajları
   return router.handle(message, sender, sendResponse);
-});
-
-// ─── Alarm listener ──────────────────────────────────────────────────────────
-
-chrome.alarms.onAlarm.addListener((alarm) => {
-  scheduler.onAlarm(alarm).catch(console.error);
-});
-
-// ─── Kurulum ─────────────────────────────────────────────────────────────────
-
-chrome.runtime.onInstalled.addListener(() => {
-  scheduler.scheduleAll().catch(console.error);
 });

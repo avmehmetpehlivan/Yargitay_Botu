@@ -66,9 +66,6 @@ export class StorageManager {
       criteria,
       label,
       savedAt: isoNow(),
-      lastCheckedAt: isoNow(),
-      lastCheckedCount: 0,
-      newDecisionCount: 0,
     };
 
     await saveSavedSearch(item);

@@ -1,19 +1,14 @@
 import type { PopupToBackground, ContentToBackground, StatusResponse, GenericResponse } from '../shared/types/Messages';
 import type { ScrapingOrchestrator } from './ScrapingOrchestrator';
 import type { StorageManager } from './StorageManager';
-import type { AlarmScheduler } from './AlarmScheduler';
 import type { SearchResult } from '../shared/types/SearchResult';
-import { isoNow } from '../shared/utils/dateUtils';
 
 type SendResponse = (response: StatusResponse | GenericResponse | SearchResult | null) => void;
 
 export class MessageRouter {
-  private lastResult: SearchResult | null = null;
-
   constructor(
     private orchestrator: ScrapingOrchestrator,
     private storage: StorageManager,
-    private scheduler: AlarmScheduler,
   ) {}
 
   /** chrome.runtime.onMessage handler — sync wrapper */
@@ -24,10 +19,6 @@ export class MessageRouter {
   ): boolean {
     this.dispatch(message as PopupToBackground, sendResponse).catch(console.error);
     return true; // async response
-  }
-
-  setLastResult(result: SearchResult): void {
-    this.lastResult = result;
   }
 
   // ─── Content Script mesajları (background kendi içinde yönlendirir) ────────
@@ -46,10 +37,7 @@ export class MessageRouter {
           return;
         }
 
-        this.orchestrator.onComplete = (result) => {
-          this.lastResult = result;
-          this.storage.persistSearchResult(result);
-        };
+        this.orchestrator.onComplete = (result) => this.storage.persistSearchResult(result);
         this.orchestrator.onError = (err) => console.error('[Background] Scraping error:', err);
         const { maxDecisions } = await this.storage.getSettings();
         this.orchestrator.start(msg.tabId, msg.criteria, maxDecisions);
@@ -77,8 +65,7 @@ export class MessageRouter {
       }
 
       case 'SAVE_SEARCH': {
-        const saved = await this.storage.saveSearch(msg.keywords, msg.label, msg.criteria);
-        await this.scheduler.schedule(saved);
+        await this.storage.saveSearch(msg.keywords, msg.label, msg.criteria);
         sendResponse({ ok: true });
         break;
       }
@@ -91,28 +78,12 @@ export class MessageRouter {
 
       case 'DELETE_SAVED_SEARCH': {
         await this.storage.deleteSavedSearch(msg.id);
-        await this.scheduler.unschedule(msg.id);
         sendResponse({ ok: true });
         break;
       }
 
       case 'DELETE_HISTORY_ITEM': {
         await this.storage.deleteHistoryItem(msg.id);
-        sendResponse({ ok: true });
-        break;
-      }
-
-      case 'CHECK_NEW_DECISIONS': {
-        // Lazy check: mevcut sonuç varsa karşılaştır
-        if (this.lastResult && this.lastResult.keywords.join('|') === msg.saved.keywords.join('|')) {
-          const newCount = this.lastResult.totalCount;
-          const diff = newCount - msg.saved.lastCheckedCount;
-          await this.storage.updateSavedSearch(msg.saved.id, {
-            lastCheckedAt: isoNow(),
-            lastCheckedCount: newCount,
-            newDecisionCount: diff > 0 ? diff : 0,
-          });
-        }
         sendResponse({ ok: true });
         break;
       }

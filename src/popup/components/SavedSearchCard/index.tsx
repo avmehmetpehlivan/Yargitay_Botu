@@ -50,11 +50,6 @@ export function SavedSearchCard({
             </button>
           )}
         </div>
-        {saved.newDecisionCount > 0 && (
-          <span title="Son taramadan bu yana eklenen karar sayısı">
-            <Badge variant="red">{saved.newDecisionCount} yeni karar</Badge>
-          </span>
-        )}
       </div>
 
       {/* Keyword'ler (label varsa göster) */}
@@ -76,17 +71,7 @@ export function SavedSearchCard({
       )}
 
       {/* Meta */}
-      <div className="space-y-0.5 text-xs text-slate-400">
-        <p>Kaydedildi: {formatDateTimeTR(saved.savedAt)}</p>
-        {saved.lastCheckedCount > 0 ? (
-          <p title="Bu arama için yeni karar olup olmadığının en son kontrol edildiği zaman">
-            Yeni karar taraması: {formatDateTimeTR(saved.lastCheckedAt)} · o an{' '}
-            {saved.lastCheckedCount} karar vardı
-          </p>
-        ) : (
-          <p>Yeni karar taraması henüz yapılmadı</p>
-        )}
-      </div>
+      <p className="text-xs text-slate-400">Kaydedildi: {formatDateTimeTR(saved.savedAt)}</p>
 
       {/* Aksiyonlar */}
       <div className="flex gap-2">
