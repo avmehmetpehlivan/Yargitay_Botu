@@ -5,13 +5,18 @@
   "description": "Yargıtay kararlarını toplu toplayın; istatistik görün, filtreleyin ve PDF, Word veya Excel (CSV) olarak dışa aktarın.",
   "permissions": ["storage", "alarms", "downloads", "notifications", "tabs", "scripting"],
   "host_permissions": ["*://karararama.yargitay.gov.tr/*"],
+  "icons": {
+    "16": "icons/extension-icon16.png",
+    "48": "icons/extension-icon48.png",
+    "128": "icons/extension-icon128.png"
+  },
   "action": {
     "default_popup": "popup.html",
     "default_title": "Yargıtay Karar Asistanı",
     "default_icon": {
-      "16": "icons/icon16.png",
-      "48": "icons/icon48.png",
-      "128": "icons/icon128.png"
+      "16": "icons/extension-icon16.png",
+      "48": "icons/extension-icon48.png",
+      "128": "icons/extension-icon128.png"
     }
   },
   "background": {
