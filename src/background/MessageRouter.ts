@@ -1,9 +1,9 @@
-import type { PopupToBackground, ContentToBackground, StatusResponse, GenericResponse } from '../shared/types/Messages';
+import type { PopupToBackground, ContentToBackground, StatusResponse, GenericResponse, PreviewResponse } from '../shared/types/Messages';
 import type { ScrapingOrchestrator } from './ScrapingOrchestrator';
 import type { StorageManager } from './StorageManager';
 import type { SearchResult } from '../shared/types/SearchResult';
 
-type SendResponse = (response: StatusResponse | GenericResponse | SearchResult | null) => void;
+type SendResponse = (response: StatusResponse | GenericResponse | SearchResult | PreviewResponse | null) => void;
 
 export class MessageRouter {
   constructor(
@@ -39,9 +39,14 @@ export class MessageRouter {
 
         this.orchestrator.onComplete = (result) => this.storage.persistSearchResult(result);
         this.orchestrator.onError = (err) => console.error('[Background] Scraping error:', err);
-        const { maxDecisions } = await this.storage.getSettings();
-        this.orchestrator.start(msg.tabId, msg.criteria, maxDecisions);
+        this.orchestrator.start(msg.tabId, msg.criteria);
 
+        sendResponse({ ok: true });
+        break;
+      }
+
+      case 'LOAD_MORE': {
+        this.orchestrator.loadMore(msg.tabId);
         sendResponse({ ok: true });
         break;
       }
@@ -49,6 +54,12 @@ export class MessageRouter {
       case 'FETCH_FULLTEXTS': {
         this.orchestrator.fetchFulltexts(msg.tabId, msg.ids);
         sendResponse({ ok: true });
+        break;
+      }
+
+      case 'PREVIEW_FULLTEXT': {
+        const { fullText, rateLimited } = await this.orchestrator.previewFulltext(msg.tabId, msg.id);
+        sendResponse({ ok: true, fullText, rateLimited });
         break;
       }
 

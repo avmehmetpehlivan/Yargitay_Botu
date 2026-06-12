@@ -14,15 +14,16 @@
   border-radius: 2px;
 }
 
-/* Popup gövdesi sabit boyut — Chrome tarafından kırpılmaz */
+/* Yan panel: uygulama pencerenin tamamını kaplar (sabit boyut yok). */
+html,
 body {
   margin: 0;
   padding: 0;
-  overflow: hidden;
+  height: 100%;
 }
 
 #root {
-  width: 420px;
-  height: 580px;
+  width: 100%;
+  height: 100%;
   overflow: hidden;
 }

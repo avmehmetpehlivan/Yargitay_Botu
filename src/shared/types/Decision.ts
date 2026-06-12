@@ -33,7 +33,10 @@ export interface ScrapingJob {
   startedAt: string;
   error: string | null;
   criteria?: SearchCriteria; // aramada kullanılan parametreler (kaydetme/gösterim için)
-  recordsTotal?: number;     // sitedeki toplam sonuç (toplananlardan fazla olabilir)
+  recordsTotal?: number;     // sitedeki toplam sonuç (çekilenlerden fazla olabilir)
+  effectiveTotal?: number;   // listelenebilecek toplam (= recordsTotal; cap yok)
+  canLoadMore?: boolean;     // daha çekilecek blok var mı (decisions.length < recordsTotal)
+  loadError?: string;        // sonraki blok çekimi başarısız (ör. 429) — kullanıcı tekrar dener
   // Tam metin (fulltext) fazı UX'i için
   fulltextStartedAt?: string | null; // ETA hesabı için
   throttled?: boolean;               // sunucu 429 ile yavaşlattıysa true

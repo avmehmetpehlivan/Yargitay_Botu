@@ -68,12 +68,11 @@ export async function generatePdf(
   });
 }
 
-function buildCoverPage(decisions: Decision[], keywords: string[], subtitle?: string) {
+function buildCoverPage(decisions: Decision[], keywords: string[]) {
   return {
     stack: [
       { text: '\n\n\n\n' },
       { text: 'Yargıtay Karar Arama Asistanı', style: 'coverTitle' },
-      ...(subtitle ? [{ text: subtitle, style: 'coverSub' }] : []),
       { text: '\n' },
       { text: `Arama: "${keywords.join(' • ')}"`, style: 'coverSub' },
       { text: `Toplam karar: ${decisions.length}`, style: 'coverMeta' },
@@ -81,75 +80,6 @@ function buildCoverPage(decisions: Decision[], keywords: string[], subtitle?: st
     ],
     pageBreak: undefined,
   };
-}
-
-/**
- * Künye (özet) PDF: yalnızca metadata — kararların tam metnini ÇEKMEDEN üretilir.
- * Başlık + dağılım özeti + tüm kararların künye tablosu. 0 getDokuman isteği.
- */
-export async function generateSummaryPdf(
-  decisions: Decision[],
-  keywords: string[],
-): Promise<Blob> {
-  const pdfMakeModule = await import('pdfmake/build/pdfmake');
-  const pdfFontsModule = await import('pdfmake/build/vfs_fonts');
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const pdfMake = (pdfMakeModule as any).default ?? pdfMakeModule;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const pdfFonts = (pdfFontsModule as any).default ?? pdfFontsModule;
-  pdfMake.vfs = pdfFonts.pdfMake?.vfs ?? pdfFonts.vfs;
-
-  const dd: TDocumentDefinitions = {
-    pageSize: 'A4',
-    pageMargins: [56, 56, 56, 56],
-    styles: STYLES,
-    content: [
-      buildCoverPage(decisions, keywords, 'Künye Listesi'),
-      { text: '', pageBreak: 'after' },
-      buildDistribution(decisions),
-      { text: '\n' },
-      buildTableOfContents(decisions),
-    ],
-    footer: (currentPage, pageCount) => ({
-      columns: [
-        { text: `Yargıtay Karar Arama Asistanı — ${formatDateTimeTR(isoNow())}`, fontSize: 8, color: '#94a3b8', margin: [56, 0, 0, 0] },
-        { text: `${currentPage} / ${pageCount}`, fontSize: 8, color: '#94a3b8', alignment: 'right', margin: [0, 0, 56, 0] },
-      ],
-    }),
-  };
-
-  return new Promise((resolve, reject) => {
-    pdfMake.createPdf(dd).getBlob((blob: Blob) => {
-      if (blob) resolve(blob);
-      else reject(new Error('PDF oluşturulamadı'));
-    });
-  });
-}
-
-/** Yıl ve daire dağılımının kısa metin özeti (tam metin gerektirmez). */
-function buildDistribution(decisions: Decision[]) {
-  const byYear = countBy(decisions.map((d) => String(d.year || '—')));
-  const byChamber = countBy(decisions.map((d) => d.chamber || 'Bilinmiyor'));
-
-  const fmt = (m: Map<string, number>) =>
-    [...m.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .map(([k, v]) => `${k} (${v})`)
-      .join('   ');
-
-  return {
-    stack: [
-      { text: 'Dağılım', style: 'tocHeader' },
-      { text: `Yıl: ${fmt(byYear)}`, style: 'decisionMeta' },
-      { text: `Daire: ${fmt(byChamber)}`, style: 'decisionMeta' },
-    ],
-  };
-}
-
-function countBy(values: string[]): Map<string, number> {
-  const m = new Map<string, number>();
-  for (const v of values) m.set(v, (m.get(v) ?? 0) + 1);
-  return m;
 }
 
 function buildDecisionPages(decisions: Decision[], keywords: string[]) {

@@ -43,12 +43,12 @@ export function buildKeywordQuery(c: KwParts): string {
   return q.trim();
 }
 
-/** Gösterim için terimi tırnaklar (çok kelimeliyse). */
+/** Gösterim için terimi tırnaklar (tek/çok kelime fark etmez). */
 function quoteForDisplay(raw: string): string {
   const k = raw.trim();
   if (!k) return '';
-  if (k.startsWith('"')) return k;
-  return /\s/.test(k) ? `"${k}"` : k;
+  if (k.startsWith('"') && k.endsWith('"')) return k; // zaten tırnaklı
+  return `"${k}"`;
 }
 
 /**

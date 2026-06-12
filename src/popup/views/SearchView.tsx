@@ -50,11 +50,22 @@ export function SearchView({ onNavigate }: SearchViewProps) {
     matchMode,
   });
 
-  // Popup açılınca aktif sekmeyi kontrol et
+  // Aktif sekmenin Yargıtay olup olmadığını kontrol et. Yan panel odak kaybında
+  // kapanmaz; bu yüzden sekme değişimini de dinleyip yeniden kontrol ederiz.
   useEffect(() => {
-    chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
-      setIsOnSite(!!tab?.url?.includes(YARGITAY_HOST));
-    });
+    const check = () => {
+      chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
+        setIsOnSite(!!tab?.url?.includes(YARGITAY_HOST));
+      });
+    };
+    check();
+    const onUpdated = () => check();
+    chrome.tabs.onActivated.addListener(onUpdated);
+    chrome.tabs.onUpdated.addListener(onUpdated);
+    return () => {
+      chrome.tabs.onActivated.removeListener(onUpdated);
+      chrome.tabs.onUpdated.removeListener(onUpdated);
+    };
   }, []);
 
   // Kayıtlı/geçmiş aramadan gelen taslağı alanlara yükle (otomatik aramaz).

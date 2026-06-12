@@ -6,7 +6,9 @@ import type { SearchCriteria } from './SearchCriteria';
 export const MSG = {
   // Popup → Background
   START_SCRAPING:        'START_SCRAPING',
+  LOAD_MORE:             'LOAD_MORE',
   FETCH_FULLTEXTS:       'FETCH_FULLTEXTS',
+  PREVIEW_FULLTEXT:      'PREVIEW_FULLTEXT',
   STOP_SCRAPING:         'STOP_SCRAPING',
   GET_STATUS:            'GET_STATUS',
   SAVE_SEARCH:           'SAVE_SEARCH',
@@ -15,8 +17,9 @@ export const MSG = {
   DELETE_HISTORY_ITEM:   'DELETE_HISTORY_ITEM',
 
   // Background → Content Script
-  SCRAPE_METADATA:       'SCRAPE_METADATA',
+  SCRAPE_BLOCK:          'SCRAPE_BLOCK',
   SCRAPE_FULLTEXTS:      'SCRAPE_FULLTEXTS',
+  PREVIEW_ONE:           'PREVIEW_ONE',
   STOP:                  'STOP',
 
   // Content Script → Background
@@ -32,7 +35,9 @@ export type MsgKey = typeof MSG[keyof typeof MSG];
 
 export type PopupToBackground =
   | { action: 'START_SCRAPING'; criteria: SearchCriteria; tabId: number }
+  | { action: 'LOAD_MORE'; tabId: number }
   | { action: 'FETCH_FULLTEXTS'; ids: string[]; tabId: number }
+  | { action: 'PREVIEW_FULLTEXT'; id: string; tabId: number }
   | { action: 'STOP_SCRAPING' }
   | { action: 'GET_STATUS' }
   | { action: 'SAVE_SEARCH'; keywords: string[]; label?: string; criteria?: SearchCriteria }
@@ -44,14 +49,17 @@ export type PopupToBackground =
 
 export type BackgroundToContent =
   | { action: 'PING' }
-  | { action: 'SCRAPE_METADATA'; criteria: SearchCriteria; maxDecisions?: number }
+  // startOffset'ten başlayan TEK 100'lük bloğu çeker (API pageSize max 100; 429'a
+  // yol açmamak için blok başına yalnızca bir /aramalist isteği atılır).
+  | { action: 'SCRAPE_BLOCK'; criteria: SearchCriteria; startOffset: number }
   | { action: 'SCRAPE_FULLTEXTS'; decisions: DecisionMetadata[] }
+  | { action: 'PREVIEW_ONE'; id: string }
   | { action: 'STOP' };
 
 // ─── Discriminated union: Content Script → Background ────────────────────────
 
 export type ContentToBackground =
-  | { action: 'METADATA_BATCH'; decisions: DecisionMetadata[]; hasNextPage: boolean; pageNum: number; recordsTotal: number }
+  | { action: 'METADATA_BATCH'; decisions: DecisionMetadata[]; recordsTotal: number }
   | { action: 'FULLTEXT_BATCH'; decisions: Decision[]; batchIndex: number }
   | { action: 'FULLTEXT_PROGRESS'; done: number; total: number; throttled: boolean }
   | { action: 'CONTENT_COMPLETE' }
@@ -66,4 +74,11 @@ export interface StatusResponse {
 export interface GenericResponse {
   ok: boolean;
   error?: string;
+}
+
+/** PREVIEW_FULLTEXT / PREVIEW_ONE yanıtı: tek kararın tam metni. */
+export interface PreviewResponse {
+  ok: boolean;
+  fullText: string;
+  rateLimited?: boolean;
 }

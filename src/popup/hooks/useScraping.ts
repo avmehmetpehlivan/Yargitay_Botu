@@ -62,6 +62,19 @@ export function useScraping() {
     [store],
   );
 
+  // ── Sonraki 100'lük bloğu çek (kullanıcı sayfalarken talep üzerine) ────────
+  const loadMore = useCallback(async () => {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id || !tab.url?.includes(YARGITAY_HOST)) return;
+
+    await chrome.runtime.sendMessage({ action: MSG.LOAD_MORE, tabId: tab.id });
+
+    const response = (await chrome.runtime.sendMessage({
+      action: MSG.GET_STATUS,
+    })) as StatusResponse;
+    if (response?.job) store.setJob(response.job);
+  }, [store]);
+
   // ── Seçili kararların tam metnini çek (talep üzerine) ──────────────────────
   const fetchFulltexts = useCallback(
     async (ids: string[]) => {
@@ -101,6 +114,7 @@ export function useScraping() {
     lastResult: store.lastResult,
     start,
     stop,
+    loadMore,
     fetchFulltexts,
     cancelFulltext,
     reset: store.reset,

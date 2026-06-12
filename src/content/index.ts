@@ -6,9 +6,7 @@ import { sleep } from './utils/domHelpers';
 
 // ─── Ayarlar ────────────────────────────────────────────────────────────────
 
-const PAGE_SIZE = 100; // /aramalist sayfa başına kayıt
-const DEFAULT_MAX_DECISIONS = 500; // mesajda gelmezse (ör. alarm) varsayılan
-const METADATA_PAGE_DELAY_MS = 800; // /aramalist sayfaları arası (rate limit koruması)
+const API_PAGE_SIZE = 100; // /aramalist tek istekte EN FAZLA 100 karar döner (blok = 100)
 const BATCH_SIZE = 5; // çökme koruması için fulltext batch boyutu
 
 // AIMD adaptif throttle (getDokuman): başarıda yavaşça hızlan, 429'da katla.
@@ -38,9 +36,13 @@ function send(msg: ContentToBackground): void {
   });
 }
 
-// ─── Faz 1: Metadata (hızlı) — /aramalist | /aramadetaylist ─────────────────────
+// ─── Faz 1: Metadata — TEK 100'lük blok çek; UI sayfaladıkça LOAD_MORE ile sonraki ──
+//
+// API tek istekte en fazla 100 karar döndürür ve ardışık çağrılarda 429 verir;
+// bu yüzden blok = 100'dür (UI'daki 10/25/50/100 tercihinden bağımsız). startOffset
+// her zaman 100'ün katıdır → pageNumber = startOffset/100 + 1.
 
-async function scrapeMetadata(criteria: SearchCriteria, maxDecisions: number): Promise<void> {
+async function scrapeBlock(criteria: SearchCriteria, startOffset: number): Promise<void> {
   const hasQuery = criteria.keywords.some((k) => k.trim());
   const hasDetail =
     !!(criteria.kurullar?.length || criteria.hukukDaireleri?.length ||
@@ -50,28 +52,9 @@ async function scrapeMetadata(criteria: SearchCriteria, maxDecisions: number): P
   // En az bir kriter olmalı (boş aramayı engelle).
   if (!hasQuery && !hasDetail) throw new Error('Arama kriteri girilmedi.');
 
-  let pageNumber = 1;
-  let collected = 0;
-
-  while (!isStopped) {
-    const { decisions, recordsTotal } = await searchPage(criteria, pageNumber, PAGE_SIZE);
-
-    collected += decisions.length;
-    const target = Math.min(recordsTotal, maxDecisions);
-    const hasNext = !isStopped && decisions.length > 0 && collected < target;
-
-    send({
-      action: 'METADATA_BATCH',
-      decisions,
-      hasNextPage: hasNext,
-      pageNum: pageNumber,
-      recordsTotal,
-    });
-
-    if (!hasNext) break;
-    pageNumber++;
-    await sleep(METADATA_PAGE_DELAY_MS);
-  }
+  const pageNumber = Math.floor(startOffset / API_PAGE_SIZE) + 1;
+  const { decisions, recordsTotal } = await searchPage(criteria, pageNumber, API_PAGE_SIZE);
+  send({ action: 'METADATA_BATCH', decisions, recordsTotal });
 }
 
 // ─── Faz 2: Fulltext (yavaş) — /getDokuman ─────────────────────────────────────
@@ -164,9 +147,9 @@ function registerListener(): void {
           break;
         }
 
-        case 'SCRAPE_METADATA': {
+        case 'SCRAPE_BLOCK': {
           isStopped = false;
-          scrapeMetadata(message.criteria, message.maxDecisions ?? DEFAULT_MAX_DECISIONS)
+          scrapeBlock(message.criteria, message.startOffset)
             .then(() => {
               if (!isStopped) send({ action: 'CONTENT_COMPLETE' });
             })
@@ -188,6 +171,17 @@ function registerListener(): void {
             });
           sendResponse({ ok: true });
           break;
+        }
+
+        case 'PREVIEW_ONE': {
+          // Önizleme: tek kararın metnini çek. Toplu değil → AIMD'siz, tek deneme.
+          fetchDecisionTextOnce(message.id)
+            .then((fullText) => sendResponse({ ok: true, fullText }))
+            .catch((e: unknown) => {
+              const rateLimited = e instanceof RateLimitError;
+              sendResponse({ ok: true, fullText: '', rateLimited });
+            });
+          return true; // async sendResponse — kanalı açık tut
         }
 
         case 'STOP': {

@@ -13,13 +13,13 @@ export function App() {
   const [activeView, setActiveView] = useState<View>('search');
 
   return (
-    <div className="flex h-[580px] w-[420px] flex-col bg-slate-50">
+    <div className="flex h-screen w-full flex-col bg-slate-50">
       {/* Header */}
       <header className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3">
         <img src={appIcon} alt="" className="h-8 w-8 shrink-0" />
         <div className="min-w-0 flex-1">
-          <h1 className="text-sm font-semibold text-slate-900">Yargıtay Karar Arama Asistanı</h1>
-          <p className="text-xs text-slate-400">karararama.yargitay.gov.tr</p>
+          <h1 className="truncate text-sm font-semibold text-slate-900">Yargıtay Karar Arama Asistanı</h1>
+          <p className="truncate text-xs text-slate-400">karararama.yargitay.gov.tr</p>
         </div>
         <button
           onClick={() => setActiveView('settings')}
@@ -39,13 +39,20 @@ export function App() {
         </button>
       </header>
 
-      {/* Aktif görünüm */}
-      <main className="flex-1 overflow-y-auto">
-        {activeView === 'search'   && <SearchView  onNavigate={setActiveView} />}
-        {activeView === 'results'  && <ResultsView />}
-        {activeView === 'history'  && <HistoryView />}
-        {activeView === 'saved'    && <SavedView   onNavigate={setActiveView} />}
-        {activeView === 'settings' && <SettingsView />}
+      {/* Aktif görünüm. Yükseklik flex zinciriyle SINIRLI tutulur (yüzde yok):
+          wrapper main'i tam doldurur ve kendisi kaydırılabilir → uzun formlar/
+          listeler burada kaydırılır, uygulama boyu panel viewport'unu AŞMAZ.
+          ResultsView ise flex-1 ile wrapper'ı doldurup listesini KENDİ içinde
+          kaydırır (bkz. ResultsView). Yatayda: dar panelde max-w-xl ortalanır,
+          ≥800px'te split düzen için max-w-5xl'e genişler. */}
+      <main className="flex min-h-0 flex-1 flex-col">
+        <div className="mx-auto flex w-full min-h-0 max-w-xl flex-1 flex-col overflow-y-auto min-[800px]:max-w-5xl">
+          {activeView === 'search'   && <SearchView  onNavigate={setActiveView} />}
+          {activeView === 'results'  && <ResultsView />}
+          {activeView === 'history'  && <HistoryView />}
+          {activeView === 'saved'    && <SavedView   onNavigate={setActiveView} />}
+          {activeView === 'settings' && <SettingsView />}
+        </div>
       </main>
 
       {/* Alt nav */}

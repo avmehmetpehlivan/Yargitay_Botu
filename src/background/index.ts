@@ -9,6 +9,12 @@ const storage     = new StorageManager();
 const orchestrator = new ScrapingOrchestrator();
 const router      = new MessageRouter(orchestrator, storage);
 
+// Araç çubuğu ikonuna basınca yan panel açılsın (popup yerine). Yan panel
+// odak kaybında kapanmaz → kullanıcı kararları önizlerken arayüz açık kalır.
+chrome.sidePanel
+  .setPanelBehavior({ openPanelOnActionClick: true })
+  .catch((e) => console.error('[Background] sidePanel setPanelBehavior:', e));
+
 // ─── Message listener ─────────────────────────────────────────────────────────
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {

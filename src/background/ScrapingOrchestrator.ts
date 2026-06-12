@@ -4,7 +4,6 @@ import type { SearchCriteria } from '../shared/types/SearchCriteria';
 import type { SearchResult } from '../shared/types/SearchResult';
 import { generateId } from '../shared/utils/textUtils';
 import { isoNow } from '../shared/utils/dateUtils';
-import { clampMaxDecisions } from '../shared/constants/storage';
 import { getCachedFulltexts, putFulltexts } from '../shared/utils/fulltextCache';
 
 type JobPhase = ScrapingJob['phase'];
@@ -30,21 +29,19 @@ async function ensureContentScript(tabId: number): Promise<void> {
 export class ScrapingOrchestrator {
   private job: ScrapingJob | null = null;
   private tabId: number | null = null;
-  private metadataDecisions: DecisionMetadata[] = [];
+  private metadataDecisions: DecisionMetadata[] = []; // çekilen tüm blokların metadata'sı
   private startedAt = 0;
   private cachedCount = 0; // tam metin fazında cache'ten gelen sayı (ilerleme tabanı)
-  private maxDecisions = 500; // metadata üst sınırı (kullanıcı ayarından)
 
   onComplete: ((result: SearchResult) => void) | null = null;
   onError:    ((error: string) => void) | null = null;
 
   // ─── Public API ──────────────────────────────────────────────────────────
 
-  start(tabId: number, criteria: SearchCriteria, maxDecisions = 500): void {
+  start(tabId: number, criteria: SearchCriteria): void {
     this.tabId = tabId;
     this.metadataDecisions = [];
     this.startedAt = Date.now();
-    this.maxDecisions = clampMaxDecisions(maxDecisions);
 
     this.job = {
       id: generateId(),
@@ -58,22 +55,37 @@ export class ScrapingOrchestrator {
       error: null,
     };
 
-    void this.beginMetadata(tabId, criteria);
+    void this.beginBlock(); // ilk blok (100 karar)
   }
 
   /**
-   * Content script'in sayfaya yüklü olduğundan emin olduktan sonra metadata
-   * scraping'i başlatır. Statik enjeksiyon (manifest) bazen olmaz — örn. sayfa
-   * uzantı yüklenmeden önce açılmışsa. Bu durumda chrome.scripting ile dinamik
-   * enjekte ederiz.
+   * Kullanıcı sayfalarken çekilenden sonraki bloğu getirir (talep üzerine).
+   * Zaten meşgulse veya çekilecek karar kalmadıysa hiçbir şey yapmaz.
    */
-  private async beginMetadata(tabId: number, criteria: SearchCriteria): Promise<void> {
+  loadMore(tabId: number): void {
+    if (!this.job) return;
+    if (this.job.phase === 'metadata' || this.job.phase === 'fulltext') return; // meşgul
+    if (!this.job.canLoadMore) return;
+    this.tabId = tabId;
+    this.job.loadError = undefined; // yeni deneme: önceki hata temizlenir
+    this.setPhase('metadata');
+    void this.beginBlock();
+  }
+
+  /**
+   * Çekilmiş karar sayısından (offset) başlayarak bir sonraki bloğu ister.
+   * Content script yüklü değilse chrome.scripting ile enjekte eder.
+   */
+  private async beginBlock(): Promise<void> {
+    if (!this.job || this.tabId == null) return;
+    const criteria = this.job.criteria;
+    if (!criteria) return;
     try {
-      await ensureContentScript(tabId);
-      await chrome.tabs.sendMessage(tabId, {
-        action: 'SCRAPE_METADATA',
+      await ensureContentScript(this.tabId);
+      await chrome.tabs.sendMessage(this.tabId, {
+        action: 'SCRAPE_BLOCK',
         criteria,
-        maxDecisions: this.maxDecisions,
+        startOffset: this.metadataDecisions.length,
       });
     } catch {
       this.fail(
@@ -127,6 +139,35 @@ export class ScrapingOrchestrator {
     void this.beginFulltexts(tabId, selected);
   }
 
+  /**
+   * Tek kararın tam metnini önizleme için döner (job'a dokunmaz).
+   * Önce IndexedDB cache'e bakar (0 istek); yoksa content script üzerinden
+   * tek bir /getDokuman çağırır ve sonucu cache'e yazar. Toplu çekim olmadığı
+   * için 429 riski yok.
+   */
+  async previewFulltext(
+    tabId: number,
+    id: string,
+  ): Promise<{ fullText: string; rateLimited: boolean }> {
+    const cached = await getCachedFulltexts([id]);
+    const hit = cached.get(id);
+    if (hit) return { fullText: hit, rateLimited: false };
+
+    try {
+      await ensureContentScript(tabId);
+      const res = (await chrome.tabs.sendMessage(tabId, { action: 'PREVIEW_ONE', id })) as
+        | { ok: boolean; fullText?: string; rateLimited?: boolean }
+        | undefined;
+
+      if (res?.rateLimited) return { fullText: '', rateLimited: true };
+      const fullText = res?.fullText ?? '';
+      if (fullText) await putFulltexts([{ id, fullText }]);
+      return { fullText, rateLimited: false };
+    } catch {
+      return { fullText: '', rateLimited: false };
+    }
+  }
+
   private async beginFulltexts(tabId: number, selected: DecisionMetadata[]): Promise<void> {
     if (!this.job) return;
     try {
@@ -164,53 +205,56 @@ export class ScrapingOrchestrator {
     if (!this.job) return;
 
     switch (msg.action) {
-      case 'METADATA_BATCH':    this.onMetadataBatch(msg.decisions, msg.hasNextPage, msg.recordsTotal); break;
+      case 'METADATA_BATCH':    this.onMetadataBatch(msg.decisions, msg.recordsTotal); break;
       case 'FULLTEXT_BATCH':    this.onFulltextBatch(msg.decisions);                       break;
       case 'FULLTEXT_PROGRESS': this.onFulltextProgress(msg.done, msg.total, msg.throttled); break;
       case 'CONTENT_COMPLETE':  this.onContentComplete();                                  break;
-      case 'CONTENT_ERROR':     this.fail(msg.error);                                      break;
+      case 'CONTENT_ERROR':     this.onContentError(msg.error);                            break;
     }
   }
 
   // ─── Private ─────────────────────────────────────────────────────────────
 
-  private onMetadataBatch(
-    decisions: DecisionMetadata[],
-    hasNextPage: boolean,
-    recordsTotal: number,
-  ): void {
+  private onMetadataBatch(decisions: DecisionMetadata[], recordsTotal: number): void {
     if (!this.job) return;
 
+    const wasFirstBlock = this.metadataDecisions.length === 0;
+
+    // Bloğu biriktir (cap yok — kullanıcı tüm sonuçlar boyunca sayfalayabilir).
     this.metadataDecisions = [...this.metadataDecisions, ...decisions];
     this.job.recordsTotal = Math.max(this.job.recordsTotal ?? 0, recordsTotal);
-    this.job.metadataProgress = {
-      current: this.metadataDecisions.length,
-      total:   this.metadataDecisions.length,
-    };
 
-    if (hasNextPage) return;
+    const effectiveTotal = this.job.recordsTotal; // listelenebilecek = sitedeki toplam
+    this.job.effectiveTotal = effectiveTotal;
 
-    // Metadata tamamlandı. Tam metni OTOMATİK çekmiyoruz (429 koruması) —
-    // kullanıcı seçip "Tam PDF" derse fetchFulltexts ile talep üzerine çekilir.
-    const limited = this.metadataDecisions.slice(0, this.maxDecisions);
-    this.metadataDecisions = limited;
-    this.job.metadataProgress = { current: limited.length, total: limited.length };
+    // Var olan tam metinleri koru (kullanıcı önceki blokta fulltext çekmiş olabilir).
+    const existingText = new Map(
+      this.job.decisions.filter((d) => d.fullText).map((d) => [d.id, d.fullText]),
+    );
+    this.job.decisions = this.metadataDecisions.map((d) => ({
+      ...d,
+      fullText: existingText.get(d.id) ?? '',
+    }));
 
-    // Metadata'yı boş fullText'li Decision olarak tut — seçim/künye için yeterli.
-    this.job.decisions = limited.map((d) => ({ ...d, fullText: '' }));
-
+    this.job.canLoadMore = this.job.decisions.length < effectiveTotal;
+    this.job.metadataProgress = { current: this.job.decisions.length, total: effectiveTotal };
+    this.job.loadError = undefined; // blok başarıyla geldi
     this.setPhase('complete');
-    const result: SearchResult = {
-      id:          this.job.id,
-      keywords:    this.job.keywords,
-      criteria:    this.job.criteria,
-      decisions:   this.job.decisions,
-      totalCount:  limited.length,
-      recordsTotal: this.job.recordsTotal,
-      scrapedAt:   this.job.startedAt,
-      durationMs:  Date.now() - this.startedAt,
-    };
-    this.onComplete?.(result); // geçmişe yalnızca metadata yazılır
+
+    // Geçmişe yalnızca İLK blokta yaz (arama anı snapshot'ı; sonraki bloklar yazmaz).
+    if (wasFirstBlock) {
+      const result: SearchResult = {
+        id:          this.job.id,
+        keywords:    this.job.keywords,
+        criteria:    this.job.criteria,
+        decisions:   this.job.decisions,
+        totalCount:  this.job.decisions.length,
+        recordsTotal: this.job.recordsTotal,
+        scrapedAt:   this.job.startedAt,
+        durationMs:  Date.now() - this.startedAt,
+      };
+      this.onComplete?.(result);
+    }
   }
 
   private onFulltextBatch(decisions: Decision[]): void {
@@ -238,6 +282,22 @@ export class ScrapingOrchestrator {
     // job.decisions artık seçili kararların tam metnini içeriyor (PDF için).
     this.job.throttled = false;
     this.setPhase('complete');
+  }
+
+  /**
+   * Content'ten hata geldi. Sonraki blok çekimi (metadata fazı) sırasında elde
+   * zaten sonuç varsa işi 'error'a düşürmeyiz — mevcut listeyi korur, 'complete'e
+   * döner ve loadError işaretleriz; kullanıcı bekleyip "Tekrar dene" diyebilir
+   * (otomatik tekrar denemeyiz → 429 döngüsü olmaz). İlk arama hatasında fail.
+   */
+  private onContentError(error: string): void {
+    if (!this.job) return;
+    if (this.job.phase === 'metadata' && this.metadataDecisions.length > 0) {
+      this.job.loadError = error || 'Sonraki sayfa yüklenemedi (sunucu yoğun olabilir).';
+      this.setPhase('complete');
+      return;
+    }
+    this.fail(error);
   }
 
   private fail(error: string): void {

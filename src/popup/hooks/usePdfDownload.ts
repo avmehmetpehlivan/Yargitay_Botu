@@ -2,31 +2,26 @@ import { useState, useCallback } from 'react';
 import type { Decision } from '../../shared/types/Decision';
 
 type PdfState = 'idle' | 'generating' | 'done' | 'error';
-type PdfMode = 'full' | 'summary';
 
 export function usePdfDownload() {
   const [state, setState] = useState<PdfState>('idle');
   const [error, setError] = useState<string | null>(null);
 
   const download = useCallback(
-    async (decisions: Decision[], keywords: string[], mode: PdfMode = 'full') => {
+    async (decisions: Decision[], keywords: string[]) => {
       setState('generating');
       setError(null);
 
       try {
         const mod = await import('../../pdf/PdfGenerator');
-        const blob =
-          mode === 'summary'
-            ? await mod.generateSummaryPdf(decisions, keywords)
-            : await mod.generatePdf(decisions, keywords);
+        const blob = await mod.generatePdf(decisions, keywords);
 
         const url = URL.createObjectURL(blob);
         const timestamp = new Date().toISOString().slice(0, 10);
-        const suffix = mode === 'summary' ? 'Kunye' : 'TamMetin';
 
         await chrome.downloads.download({
           url,
-          filename: `Yargitay_Kararlari_${suffix}_${timestamp}.pdf`,
+          filename: `Yargitay_Kararlari_TamMetin_${timestamp}.pdf`,
           saveAs: false,
         });
 

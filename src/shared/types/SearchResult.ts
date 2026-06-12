@@ -22,12 +22,3 @@ export interface SearchHistoryItem {
   scrapedAt: string;
   durationMs: number;
 }
-
-// İstatistikler client-side hesaplanır, saklanmaz
-export interface SearchStatistics {
-  totalCount: number;
-  firstDecisionDate: string | null;
-  lastDecisionDate: string | null;
-  byYear: Array<{ year: number; count: number }>;
-  byChamber: Array<{ chamber: string; count: number }>;
-}

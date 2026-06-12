@@ -2,23 +2,18 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { getSettings, saveSettings } from '../../shared/utils/chromeStorage';
 import { countCache, clearCache } from '../../shared/utils/fulltextCache';
 import { DEFAULT_SETTINGS } from '../../shared/types/Storage';
-import { MAX_DECISIONS_OPTIONS, clampMaxDecisions } from '../../shared/constants/storage';
 import { useHistoryStore } from '../store/history.store';
 import { Button } from '../components/common/Button';
 
 export function SettingsView() {
   const { clear: clearHistoryStore } = useHistoryStore();
   const [autoSave, setAutoSave] = useState(DEFAULT_SETTINGS.autoSaveHistory);
-  const [maxDecisions, setMaxDecisions] = useState(DEFAULT_SETTINGS.maxDecisions);
   const [cacheCount, setCacheCount] = useState<number | null>(null);
   const [busy, setBusy] = useState<'cache' | 'history' | null>(null);
   const [note, setNote] = useState<string | null>(null);
 
   useEffect(() => {
-    getSettings().then((s) => {
-      setAutoSave(s.autoSaveHistory);
-      setMaxDecisions(clampMaxDecisions(s.maxDecisions));
-    });
+    getSettings().then((s) => setAutoSave(s.autoSaveHistory));
     countCache().then(setCacheCount).catch(() => setCacheCount(null));
   }, []);
 
@@ -27,12 +22,6 @@ export function SettingsView() {
     const next = !s.autoSaveHistory;
     await saveSettings({ ...s, autoSaveHistory: next });
     setAutoSave(next);
-  };
-
-  const changeMax = async (value: number) => {
-    const s = await getSettings();
-    await saveSettings({ ...s, maxDecisions: value });
-    setMaxDecisions(value);
   };
 
   const onClearCache = async () => {
@@ -61,22 +50,6 @@ export function SettingsView() {
   return (
     <div className="flex flex-col gap-4 p-4">
       <h2 className="text-sm font-semibold text-slate-800">Ayarlar</h2>
-
-      {/* Toplanacak en fazla karar */}
-      <Row
-        title="Toplanacak en fazla karar"
-        desc="Bir aramada listelenecek karar üst sınırı. Yüksek değer daha fazla istek demektir."
-      >
-        <select
-          value={maxDecisions}
-          onChange={(e) => changeMax(Number(e.target.value))}
-          className="rounded-md border border-slate-200 px-2 py-1 text-sm focus:border-brand-400 focus:outline-none"
-        >
-          {MAX_DECISIONS_OPTIONS.map((o) => (
-            <option key={o} value={o}>{o}</option>
-          ))}
-        </select>
-      </Row>
 
       {/* Otomatik geçmiş kaydı */}
       <Row
