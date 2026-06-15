@@ -1,17 +1,9 @@
-import { useMemo } from 'react';
 import type { Decision } from '../../shared/types/Decision';
 import { formatDateTR } from '../../shared/utils/dateUtils';
 import { Icon } from './Icon';
 import { Highlighted } from './Highlighted';
 
 type PreviewState = 'idle' | 'loading' | 'done' | 'empty' | 'ratelimited' | 'offsite';
-
-/** Karar metninden ONAMA/BOZMA çıkarımı (en iyi tahmin; emin değilse null). */
-function detectOutcome(text: string): 'onama' | 'bozma' | null {
-  if (/bozulmas/i.test(text)) return 'bozma';
-  if (/onanmas|onama/i.test(text)) return 'onama';
-  return null;
-}
 
 interface Props {
   decision: Decision;
@@ -45,26 +37,12 @@ export function ReadingPane({
   onCopy,
   onPdf,
 }: Props) {
-  const outcome = useMemo(() => (state === 'done' ? detectOutcome(text) : null), [state, text]);
-
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {/* Sticky header */}
       <header className="sticky top-0 z-[5] flex items-start gap-3.5 border-b border-line bg-surface px-[26px] py-4">
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2.5">
-            <h2 className="truncate text-[17px] font-semibold tracking-[-0.015em] text-fg">{decision.chamber}</h2>
-            {outcome && (
-              <span
-                className={
-                  'shrink-0 rounded-[5px] px-[7px] py-[3px] text-[10px] font-bold tracking-[0.06em] ' +
-                  (outcome === 'onama' ? 'bg-accent-weak text-accent-text' : 'bg-danger-weak text-danger')
-                }
-              >
-                {outcome === 'onama' ? 'ONAMA' : 'BOZMA'}
-              </span>
-            )}
-          </div>
+          <h2 className="truncate text-[17px] font-semibold tracking-[-0.015em] text-fg">{decision.chamber}</h2>
           <div className="mt-1.5 flex flex-wrap items-center gap-[7px] font-mono text-xs text-fg-3">
             <span className="whitespace-nowrap"><b className="mr-[3px] font-semibold text-fg-2">Esas</b>{decision.esasNo}</span>
             <span className="text-fg-faint">·</span>
