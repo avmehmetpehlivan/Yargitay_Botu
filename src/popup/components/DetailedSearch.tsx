@@ -9,9 +9,9 @@ interface Props {
   disabled?: boolean;
 }
 
-const labelCls = 'text-[11px] font-medium text-slate-600';
+const labelCls = 'text-[11px] font-semibold uppercase tracking-wider text-fg-2';
 const inputCls =
-  'w-full rounded-md border border-slate-200 px-2 py-1 text-xs focus:border-brand-400 focus:outline-none disabled:bg-slate-50';
+  'w-full rounded-lg border border-line-2 bg-surface px-2.5 py-1.5 text-xs text-fg placeholder:text-fg-faint focus:border-accent focus:outline-none disabled:opacity-50';
 
 export function DetailedSearch({ value, onChange, disabled }: Props) {
   const set = (patch: Partial<DetailFields>) => onChange({ ...value, ...patch });
@@ -27,14 +27,14 @@ export function DetailedSearch({ value, onChange, disabled }: Props) {
   const fromIso = (iso: string) => (iso ? formatDateTR(iso) : undefined);
 
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+    <div className="flex flex-col gap-3.5 rounded-lg border border-line bg-surface-2 p-3.5">
       <div className="flex items-center justify-between">
-        <p className="text-[11px] text-slate-500">Birim seçilmezse tüm birimlerde aranır.</p>
+        <p className="text-[11.5px] text-fg-3">Birim seçilmezse tüm birimlerde aranır.</p>
         <button
           type="button"
           disabled={disabled || !hasAny}
           onClick={() => onChange({})}
-          className="text-[11px] font-medium text-slate-500 hover:text-red-600 disabled:opacity-40"
+          className="text-[11px] font-medium text-fg-3 hover:text-danger disabled:opacity-40"
         >
           Filtreleri temizle
         </button>

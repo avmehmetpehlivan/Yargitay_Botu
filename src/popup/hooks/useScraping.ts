@@ -8,6 +8,17 @@ import type { SearchCriteria } from '../../shared/types/SearchCriteria';
 const POLL_INTERVAL_MS = 600;
 const YARGITAY_HOST = 'karararama.yargitay.gov.tr';
 
+/**
+ * Açık Yargıtay sekmesinin id'sini bulur. AKTİF sekmeye bakmaz — yan panel kalıcı
+ * olduğundan kullanıcı başka sekmeye/devtools'a geçmiş olabilir; karararama sekmesi
+ * arka planda açık olduğu sürece sayfalama/çekim çalışmalı. (host izni url filtresine
+ * yeter; `tabs` izni gerekmez.)
+ */
+async function findYargitayTabId(): Promise<number | null> {
+  const tabs = await chrome.tabs.query({ url: `*://${YARGITAY_HOST}/*` });
+  return tabs.find((t) => t.id != null)?.id ?? null;
+}
+
 export function useScraping() {
   const store = useScrapingStore();
   const historyStore = useHistoryStore();
@@ -64,10 +75,10 @@ export function useScraping() {
 
   // ── Sonraki 100'lük bloğu çek (kullanıcı sayfalarken talep üzerine) ────────
   const loadMore = useCallback(async () => {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab?.id || !tab.url?.includes(YARGITAY_HOST)) return;
+    const tabId = await findYargitayTabId();
+    if (tabId == null) return;
 
-    await chrome.runtime.sendMessage({ action: MSG.LOAD_MORE, tabId: tab.id });
+    await chrome.runtime.sendMessage({ action: MSG.LOAD_MORE, tabId });
 
     const response = (await chrome.runtime.sendMessage({
       action: MSG.GET_STATUS,
@@ -79,10 +90,10 @@ export function useScraping() {
   const fetchFulltexts = useCallback(
     async (ids: string[]) => {
       if (ids.length === 0) return;
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (!tab?.id || !tab.url?.includes(YARGITAY_HOST)) return;
+      const tabId = await findYargitayTabId();
+      if (tabId == null) return;
 
-      await chrome.runtime.sendMessage({ action: MSG.FETCH_FULLTEXTS, ids, tabId: tab.id });
+      await chrome.runtime.sendMessage({ action: MSG.FETCH_FULLTEXTS, ids, tabId });
 
       const response = (await chrome.runtime.sendMessage({
         action: MSG.GET_STATUS,

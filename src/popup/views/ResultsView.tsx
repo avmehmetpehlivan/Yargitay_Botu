@@ -1,67 +1,156 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { clsx } from 'clsx';
 import type { Decision } from '../../shared/types/Decision';
+import type { View } from '../App';
 import { STORAGE_LIMITS } from '../../shared/constants/storage';
 import { formatDateTR } from '../../shared/utils/dateUtils';
 import { useScraping } from '../hooks/useScraping';
 import { useSavedStore } from '../store/saved.store';
 import { usePdfDownload } from '../hooks/usePdfDownload';
 import { useExport } from '../hooks/useExport';
-import { DecisionPreview } from '../components/DecisionPreview';
 import { usePreview } from '../hooks/usePreview';
 import { useMediaQuery } from '../hooks/useMediaQuery';
-import { Button } from '../components/common/Button';
-
-// Kırılım: ≥800px'te detay listenin sağında (split), altında tam-yüzey katman açılır.
-const SPLIT_QUERY = '(min-width: 800px)';
+import { useCollectionsStore } from '../store/collections.store';
+import { useToastStore } from '../store/toast.store';
+import { ReadingPane } from '../components/ReadingPane';
+import { SaveDecisionModal } from '../components/SaveDecisionModal';
+import { EmptyState } from '../components/EmptyState';
+import { Segmented } from '../components/Segmented';
+import { Icon } from '../components/Icon';
 
 const LIMIT = STORAGE_LIMITS.maxFulltextPerPdf; // 25
 const PAGE_SIZES = [10, 25, 50, 100] as const;
 
-type PendingExport = { ids: string[]; format: 'pdf' | 'word' };
+const shortChamber = (c: string) =>
+  c.replace(' Dairesi', '.HD').replace(' Hukuk', '').replace('. Kurulu', ' Kur.');
 
-export function ResultsView() {
+const numOf = (s: string) => s.split('/').reduce((a, p) => a * 100000 + (parseInt(p, 10) || 0), 0);
+
+type SortKey = 'none' | 'esas' | 'karar' | 'tarih';
+type SortDir = 'asc' | 'desc';
+type ExportFormat = 'pdf' | 'word';
+
+export function ResultsView({ onNavigate }: { onNavigate: (v: View) => void }) {
   const { job, loadMore, fetchFulltexts, cancelFulltext } = useScraping();
-  const { save } = useSavedStore();
-  const { state: pdfState, error: pdfError, download } = usePdfDownload();
-  const { state: exportState, exportWord } = useExport();
+  const { save: saveSearch } = useSavedStore();
+  const { state: pdfState, download, reset: resetPdf } = usePdfDownload();
+  const { state: exportState, exportWord, reset: resetExport } = useExport();
   const preview = usePreview();
-  const isWide = useMediaQuery(SPLIT_QUERY);
+  const isNarrow = useMediaQuery('(max-width: 760px)');
+  const { saved, categories } = useCollectionsStore();
+  const pushToast = useToastStore((s) => s.push);
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [pendingExport, setPendingExport] = useState<PendingExport | null>(null);
+  const [saveTarget, setSaveTarget] = useState<Decision[] | null>(null);
+  const [searchSaved, setSearchSaved] = useState(false);
+  const [recentId, setRecentId] = useState<string | null>(null); // detaydan dönülen satır (1 sn flash)
   const [pageSize, setPageSize] = useState<number>(10);
-  const [page, setPage] = useState(1); // 1-tabanlı
+  const [page, setPage] = useState(1);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [chamberSel, setChamberSel] = useState<Set<string>>(new Set());
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [sortKey, setSortKey] = useState<SortKey>('none');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const [exporting, setExporting] = useState<ExportFormat | null>(null);
+  const [pendingExport, setPendingExport] = useState<{ ids: string[]; format: ExportFormat } | null>(null);
 
-  const decisions: Decision[] = job?.decisions ?? [];
-  const keywords: string[] = job?.keywords ?? [];
-  const isExporting = job?.phase === 'fulltext';
+  const decisions: Decision[] = useMemo(() => job?.decisions ?? [], [job]);
+  const keywords = useMemo(() => job?.keywords ?? [], [job]);
+  const include = keywords;
+  const exclude = job?.criteria?.excludeKeywords ?? [];
+
+  // Koleksiyon: kayıtlı id → kategori rengi.
+  const catColor = useMemo(() => new Map(categories.map((c) => [c.id, c.color])), [categories]);
+  const savedCat = useMemo(() => new Map(saved.map((s) => [s.id, s.categoryIds[0]])), [saved]);
+  const savedCount = useMemo(() => new Map(saved.map((s) => [s.id, s.categoryIds.length])), [saved]);
+  const savedIds = useMemo(() => new Set(saved.map((s) => s.id)), [saved]);
+  // Tek kategorideyse o kategorinin rengi; çok kategorideyse renk yok (sayı gösterilir).
+  const colorOf = (id: string) => {
+    if ((savedCount.get(id) ?? 0) !== 1) return undefined;
+    const c = savedCat.get(id);
+    return c ? catColor.get(c) : undefined;
+  };
+  const countOf = (id: string) => savedCount.get(id) ?? 0;
+
+  // Daire filtresi seçenekleri: yüklenen kararlardaki benzersiz daireler (çoktan aza).
+  const chamberFilters = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const d of decisions) counts.set(d.chamber, (counts.get(d.chamber) ?? 0) + 1);
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  }, [decisions]);
+
+  // Filtre veya sıralama = "yüklenenleri rafine et" modu (lazy-load durur). Hiçbiri
+  // yokken site sırasında tüm recordsTotal boyunca sayfalanır (ileriye gidince blok çekilir).
+  const isRefining = chamberSel.size > 0 || !!dateFrom || !!dateTo || sortKey !== 'none';
+  const activeFilterCount =
+    chamberSel.size + (dateFrom ? 1 : 0) + (dateTo ? 1 : 0) + (sortKey !== 'none' ? 1 : 0);
+
+  const filtered = useMemo(() => {
+    let list = decisions;
+    if (chamberSel.size) list = list.filter((d) => chamberSel.has(d.chamber));
+    if (dateFrom) list = list.filter((d) => d.date >= dateFrom);
+    if (dateTo) list = list.filter((d) => d.date <= dateTo);
+    if (sortKey !== 'none') {
+      list = [...list].sort((a, b) => {
+        const av = sortKey === 'tarih' ? a.date : numOf(sortKey === 'esas' ? a.esasNo : a.kararNo);
+        const bv = sortKey === 'tarih' ? b.date : numOf(sortKey === 'esas' ? b.esasNo : b.kararNo);
+        const c = av < bv ? -1 : av > bv ? 1 : 0;
+        return sortDir === 'desc' ? -c : c;
+      });
+    }
+    return list;
+  }, [decisions, chamberSel, dateFrom, dateTo, sortKey, sortDir]);
+
+  const recordsTotal = job?.recordsTotal ?? decisions.length;
+  // Sayfa sayısı:
+  //  - rafine modda: yüklenen eşleşenler.
+  //  - daha çekilebilirken: sitedeki toplam üzerinden OPTİMİSTİK (ör. 29.320/100=294).
+  //  - sunucu tükendiğinde (boş/eksik blok): yalnızca gerçekten erişilebilen kadar
+  //    (site derin sayfalarda kapatırsa "/294" gerçek sayıya düşer, hayalet sayfa kalmaz).
+  const loadedPages = Math.max(1, Math.ceil(decisions.length / pageSize));
+  const totalPages = isRefining
+    ? Math.max(1, Math.ceil(filtered.length / pageSize))
+    : job?.canLoadMore
+      ? Math.max(loadedPages, Math.ceil(recordsTotal / pageSize))
+      : loadedPages;
+  const exhaustedBelowTotal = !isRefining && !job?.canLoadMore && decisions.length < recordsTotal;
+  const safePage = Math.min(page, totalPages);
+  const pageRows = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
+  const atLimit = selected.size >= LIMIT;
   const isLoadingMore = job?.phase === 'metadata' && decisions.length > 0;
 
-  // Listelenebilecek toplam = min(sitedeki toplam, ayar üst sınırı).
-  const effectiveTotal = job?.effectiveTotal ?? decisions.length;
-  const totalPages = Math.max(1, Math.ceil(effectiveTotal / pageSize));
+  const openDecision = preview.previewId ? decisions.find((d) => d.id === preview.previewId) ?? null : null;
+  const hasOpen = openDecision != null;
 
-  // Yeni arama → sayfayı başa al.
+  // Yeni arama → sıfırla.
   useEffect(() => {
     setPage(1);
     setSelected(new Set());
+    setSearchSaved(false);
   }, [job?.id]);
 
-  // Sayfa, toplam sayfa sayısını aşarsa kıstır (ör. pageSize büyüyünce).
   useEffect(() => {
     if (page > totalPages) setPage(totalPages);
   }, [page, totalPages]);
 
-  // Görüntülenecek sayfa için yeterli karar çekilmemişse sonraki bloğu iste.
-  // loadError varsa (ör. 429) otomatik denemeyiz — kullanıcı "Tekrar dene" der.
+  // Detaydan dönülen satırın flash'ını ~3 sn sonra temizle (tek sefer oynar).
   useEffect(() => {
-    const needed = page * pageSize;
-    if (needed > decisions.length && job?.canLoadMore && job.phase === 'complete' && !job.loadError) {
+    if (!recentId) return;
+    const t = setTimeout(() => setRecentId(null), 3000);
+    return () => clearTimeout(t);
+  }, [recentId]);
+
+  // Rafine modda DEĞİLKEN, görüntülenen sayfa yüklenenleri aşınca sonraki bloğu
+  // tembel çek (429 koruması: loadError'da dur, "Tekrar dene" bekler).
+  useEffect(() => {
+    if (isRefining) return;
+    if (page * pageSize > decisions.length && job?.canLoadMore && job.phase === 'complete' && !job.loadError) {
       void loadMore();
     }
-  }, [page, pageSize, decisions.length, job?.canLoadMore, job?.phase, job?.loadError, loadMore]);
+  }, [page, pageSize, decisions.length, isRefining, job?.canLoadMore, job?.phase, job?.loadError, loadMore]);
 
-  // Tam metin çekimi bitince (faz 'complete') seçilenleri PDF/Word olarak üret.
+  // Tam metin çekimi bitince seçilenleri PDF/Word üret.
   useEffect(() => {
     if (!pendingExport || job?.phase !== 'complete') return;
     const byId = new Map(decisions.map((d) => [d.id, d]));
@@ -73,326 +162,624 @@ export function ResultsView() {
     else void exportWord(picked, keywords);
   }, [job?.phase, pendingExport, decisions, keywords, download, exportWord]);
 
-  // ── Boş durumlar ────────────────────────────────────────────────────────
-  if (!job || (job.phase === 'idle')) {
-    return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-2 p-8 text-center text-slate-400">
-        <span className="text-3xl">📋</span>
-        <p className="text-sm">Henüz bir arama yapılmadı.</p>
-        <p className="text-xs">Arama sekmesinden başlayabilirsin.</p>
-      </div>
-    );
-  }
-  if (decisions.length === 0) {
-    if (job.phase === 'metadata') {
+  // ── Boş / yükleniyor durumları (split yerine tam-yüzey) ──
+  if (!job || decisions.length === 0) {
+    if (job?.phase === 'metadata') {
       return (
-        <div className="flex flex-1 flex-col items-center justify-center gap-2 p-8 text-center text-slate-400">
-          <span className="h-7 w-7 animate-spin rounded-full border-2 border-slate-300 border-t-brand-600" />
+        <div className="flex flex-1 flex-col items-center justify-center gap-2 text-fg-3">
+          <span className="h-7 w-7 animate-spin rounded-full border-2 border-line-strong border-t-accent" />
           <p className="text-sm">Aranıyor…</p>
         </div>
       );
     }
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-2 p-8 text-center text-slate-400">
-        <span className="text-3xl">🔍</span>
-        <p className="text-sm">Sonuç bulunamadı.</p>
-        <p className="text-xs">Bu kriterlerle eşleşen karar yok. Terimleri değiştirip tekrar deneyin.</p>
-      </div>
+      <EmptyState
+        icon={job?.phase === 'complete' ? 'search' : 'layers'}
+        title={job?.phase === 'complete' ? 'Sonuç bulunamadı' : 'Henüz arama yapılmadı'}
+        body={job?.phase === 'complete' ? 'Bu kriterlerle eşleşen karar yok. Terimleri değiştirip tekrar deneyin.' : 'Arama sekmesinden başlayabilirsin.'}
+      />
     );
   }
 
-  const atLimit = selected.size >= LIMIT;
-  const previewDecision = preview.previewId
-    ? decisions.find((d) => d.id === preview.previewId) ?? null
-    : null;
-
-  const safePage = Math.min(page, totalPages);
-  const pageStart = (safePage - 1) * pageSize;
-  const pageDecisions = decisions.slice(pageStart, pageStart + pageSize);
-  const recordsTotal = job.recordsTotal ?? decisions.length;
-  // ≥800px + açık önizleme → detay listenin sağında (split); değilse tam-yüzey katman.
-  const isSplit = isWide && previewDecision != null;
-
-  const toggle = (id: string) => {
+  const toggle = (id: string) =>
     setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else if (next.size < LIMIT) next.add(id);
-      return next;
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id);
+      else if (n.size < LIMIT) n.add(id);
+      return n;
     });
-  };
-  const selectFirst = () => setSelected(new Set(decisions.slice(0, LIMIT).map((d) => d.id)));
-  const clearSelection = () => setSelected(new Set());
+  const selectFirst = () => setSelected(new Set(filtered.slice(0, LIMIT).map((d) => d.id)));
+  const clearSel = () => setSelected(new Set());
 
-  // Tam metin gereken export'lar: önce (cache + ağ) çek, sonra üret.
-  const runFullExport = async (format: 'pdf' | 'word') => {
+  const runFullExport = async (format: ExportFormat) => {
     const ids = [...selected];
-    await fetchFulltexts(ids); // job fazını 'fulltext'e çeker
+    if (ids.length === 0) return;
+    resetPdf();
+    resetExport();
+    setExporting(format);
+    await fetchFulltexts(ids);
     setPendingExport({ ids, format });
+  };
+  const closeExport = () => {
+    if (pdfState === 'done' || exportState === 'done') {
+      pushToast(`${exporting === 'pdf' ? 'PDF' : 'Word'} indirildi`);
+    }
+    setExporting(null);
+    resetPdf();
+    resetExport();
+  };
+  const cancelExport = () => {
+    void cancelFulltext();
+    setPendingExport(null);
+    setExporting(null);
+  };
+
+  // Önizleme aç/kapat: kapanınca çıkılan satırı 1 sn flash'la işaretle.
+  const openPreview = (id: string) => {
+    setRecentId(null);
+    preview.open(id);
+  };
+  const closePreview = () => {
+    setRecentId(preview.previewId);
+    preview.close();
+  };
+
+  // Reading pane aksiyonları.
+  const copyText = () => {
+    if (preview.text)
+      void navigator.clipboard
+        .writeText(preview.text)
+        .then(() => pushToast('Karar metni panoya kopyalandı'))
+        .catch(() => {});
+  };
+  const pdfThis = () => {
+    if (openDecision && preview.text) void download([{ ...openDecision, fullText: preview.text }], keywords);
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
-      {/* Toplam bilgisi */}
-      <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
-        Sitede <strong className="text-slate-800">{recordsTotal}</strong> karar bulundu
-      </div>
-
-      {/* Tam metin (export) çekimi sürüyorsa ilerleme paneli */}
-      {isExporting && job && <FulltextProgress job={job} onCancel={cancelFulltext} />}
-
-      {/* Gövde: dar/orta panelde tek sütun; ≥992px + önizleme açıkken sol liste / sağ detay */}
-      {!isExporting && (
-        <div className="flex min-h-0 flex-1 gap-3">
-          <div className="flex min-h-0 flex-1 flex-col gap-3">
-            <div className="flex min-h-0 flex-1 flex-col gap-2">
-              {/* Sayfa boyutu */}
-          <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
-            <span>Sayfada:</span>
-            {PAGE_SIZES.map((s) => (
+    <div className="relative flex min-h-0 flex-1">
+      {/* SOL %30 — sonuç listesi */}
+      {!(isNarrow && hasOpen) && (
+        <section
+          className={clsx(
+            'flex min-h-0 flex-col border-r border-line bg-surface',
+            isNarrow ? 'flex-1' : 'shrink-0 grow-0 basis-[clamp(310px,33%,430px)]',
+          )}
+        >
+          {/* Özet */}
+          <div className="border-b border-line px-4 pb-2.5 pt-3.5">
+            <div className="flex flex-wrap items-center gap-1.5">
+              {include.map((k) => (
+                <span key={k} className="rounded-[7px] bg-accent-weak px-2.5 py-1 text-xs font-medium text-accent-text">
+                  {k}
+                </span>
+              ))}
+              {exclude.map((k) => (
+                <span key={k} className="rounded-[7px] bg-danger-weak px-2.5 py-1 text-xs font-medium text-danger">
+                  − {k}
+                </span>
+              ))}
               <button
-                key={s}
-                onClick={() => {
-                  setPageSize(s);
-                  setPage(1);
-                }}
-                className={
-                  'rounded px-2 py-0.5 transition-colors ' +
-                  (pageSize === s
-                    ? 'bg-brand-600 font-medium text-white'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200')
-                }
+                onClick={() => onNavigate('search')}
+                title="Aramayı düzenle"
+                className="grid h-6 w-6 place-items-center rounded-md border border-line bg-surface text-fg-3 transition-colors hover:border-line-2 hover:bg-surface-2 hover:text-accent-text"
               >
-                {s}
+                <Icon name="pencil" size={13} />
               </button>
-            ))}
-          </div>
-
-          {/* Seçim sayacı */}
-          <div className="flex items-center justify-between text-xs text-slate-500">
-            <span>
-              <strong className={atLimit ? 'text-amber-600' : 'text-slate-700'}>{selected.size}</strong>{' '}
-              / {LIMIT} seçildi
-            </span>
-            <div className="flex gap-2">
-              <button className="text-brand-700 hover:underline" onClick={selectFirst}>
-                İlk {LIMIT}'i seç
-              </button>
-              <button className="text-slate-500 hover:underline" onClick={clearSelection}>
-                Temizle
-              </button>
+            </div>
+            <div className="mt-2 flex items-center justify-between gap-2">
+              <span className="font-mono text-[11.5px] text-fg-3">
+                Sitede <b className="font-semibold text-fg-2">{recordsTotal.toLocaleString('tr-TR')}</b> karar ·{' '}
+                {decisions.length}{' '}
+                {exhaustedBelowTotal ? 'erişilebildi (site sınırı)' : 'yüklendi'}
+              </span>
+              <div className="flex shrink-0 items-center gap-1">
+                <button
+                  onClick={async () => {
+                    if (searchSaved) return;
+                    await saveSearch(keywords, job?.criteria);
+                    setSearchSaved(true);
+                    pushToast('Arama "Kayıtlı"ya eklendi');
+                  }}
+                  title={searchSaved ? 'Arama kaydedildi' : 'Aramayı kaydet'}
+                  className={
+                    'grid h-6 w-6 place-items-center rounded-md transition-colors ' +
+                    (searchSaved ? 'text-accent' : 'text-fg-3 hover:bg-surface-2 hover:text-accent-text')
+                  }
+                >
+                  <Icon name="star" size={14} style={searchSaved ? { fill: 'currentColor' } : undefined} />
+                </button>
+                <button
+                  onClick={() => onNavigate('search')}
+                  title="Aramadan çık (yeni arama)"
+                  className="grid h-6 w-6 place-items-center rounded-md text-fg-3 transition-colors hover:bg-danger-weak hover:text-danger"
+                >
+                  <Icon name="x" size={14} />
+                </button>
+              </div>
             </div>
           </div>
 
-          {/* Liste */}
-          <div className="min-h-[8rem] flex-1 divide-y divide-slate-100 overflow-y-auto rounded-lg border border-slate-200">
-            {pageDecisions.map((d) => {
-              const checked = selected.has(d.id);
-              const disabled = !checked && atLimit;
-              return (
-                <div
-                  key={d.id}
-                  className={
-                    'flex items-start gap-2 px-2 py-1.5 text-xs ' +
-                    (checked ? 'bg-brand-50' : 'hover:bg-slate-50')
-                  }
-                >
-                  <label
-                    className={
-                      'flex min-w-0 flex-1 cursor-pointer items-start gap-2 ' +
-                      (disabled ? 'opacity-40' : '')
-                    }
-                  >
-                    <input
-                      type="checkbox"
-                      className="mt-0.5"
-                      checked={checked}
-                      disabled={disabled}
-                      onChange={() => toggle(d.id)}
-                    />
-                    <span className="flex min-w-0 flex-col">
-                      <span className="font-medium text-slate-700">{d.chamber}</span>
-                      <span className="text-slate-500">
-                        {d.esasNo} · {d.kararNo} · {formatDateTR(d.date)}
-                      </span>
-                    </span>
-                  </label>
-                  <button
-                    onClick={() => preview.open(d.id)}
-                    title="Kararı önizle"
-                    aria-label="Kararı önizle"
-                    className="shrink-0 rounded p-1 text-slate-400 transition-colors hover:bg-slate-200 hover:text-brand-700"
-                  >
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
-                      <circle cx="12" cy="12" r="3" />
-                    </svg>
-                  </button>
+          {/* Filtre accordion */}
+          <div className="border-b border-line">
+            <button
+              onClick={() => setFiltersOpen((o) => !o)}
+              className="flex w-full items-center gap-2.5 px-4 py-2.5 text-[12.5px] font-medium text-fg-2 transition-colors hover:text-fg"
+            >
+              <Icon name="sliders" size={16} />
+              <span>Filtreler</span>
+              {activeFilterCount > 0 && (
+                <em className="grid h-[17px] min-w-[17px] place-items-center rounded-full bg-accent px-1.5 text-[10px] font-semibold not-italic tabular-nums text-on-accent">
+                  {activeFilterCount}
+                </em>
+              )}
+              <span className="flex-1" />
+              <Icon name="chevronDown" size={15} style={{ transform: filtersOpen ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }} />
+            </button>
+            {filtersOpen && (
+              <div className="flex flex-col gap-3.5 border-t border-line bg-surface-2 px-4 pb-4 pt-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-fg-2">Daireler</span>
+                  {activeFilterCount > 0 && (
+                    <button
+                      onClick={() => {
+                        setChamberSel(new Set());
+                        setDateFrom('');
+                        setDateTo('');
+                        setSortKey('none');
+                      }}
+                      className="text-[11px] text-fg-3 hover:text-danger"
+                    >
+                      Temizle
+                    </button>
+                  )}
                 </div>
-              );
-            })}
-
-            {isLoadingMore && pageDecisions.length === 0 && (
-              <div className="flex items-center justify-center gap-2 px-2 py-6 text-xs text-slate-400">
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-brand-600" />
-                Sonraki karar bloğu çekiliyor…
+                <div className="flex flex-wrap gap-1.5">
+                  {chamberFilters.length === 0 && (
+                    <span className="text-[11.5px] text-fg-3">Daire bilgisi yok.</span>
+                  )}
+                  {chamberFilters.map(([c, n]) => {
+                    const on = chamberSel.has(c);
+                    return (
+                      <button
+                        key={c}
+                        title={`${c} · ${n} karar`}
+                        onClick={() =>
+                          setChamberSel((prev) => {
+                            const next = new Set(prev);
+                            next.has(c) ? next.delete(c) : next.add(c);
+                            return next;
+                          })
+                        }
+                        className={clsx(
+                          'inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2.5 py-1 text-[11.5px] font-medium transition-colors',
+                          on ? 'border-accent bg-accent text-on-accent' : 'border-line-2 bg-surface text-fg-2 hover:border-accent hover:text-fg',
+                        )}
+                      >
+                        {shortChamber(c)}
+                        <span className={clsx('tabular-nums', on ? 'text-on-accent' : 'text-fg-faint')}>{n}</span>
+                        {on && <Icon name="check" size={11} stroke={2.4} />}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[11px] font-semibold uppercase tracking-wider text-fg-2">Karar tarihi</label>
+                  <div className="flex items-center gap-1.5">
+                    <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="min-w-0 flex-1 rounded-lg border border-line-2 bg-surface px-2 py-1.5 font-mono text-xs text-fg-2 focus:border-accent focus:outline-none" />
+                    <span className="text-fg-3">–</span>
+                    <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="min-w-0 flex-1 rounded-lg border border-line-2 bg-surface px-2 py-1.5 font-mono text-xs text-fg-2 focus:border-accent focus:outline-none" />
+                  </div>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[11px] font-semibold uppercase tracking-wider text-fg-2">Sıralama</label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Segmented
+                      size="sm"
+                      value={sortKey}
+                      onChange={setSortKey}
+                      options={[
+                        { value: 'esas', label: 'Esas' },
+                        { value: 'karar', label: 'Karar' },
+                        { value: 'tarih', label: 'Tarih' },
+                      ]}
+                    />
+                    <button
+                      onClick={() => setSortDir((d) => (d === 'desc' ? 'asc' : 'desc'))}
+                      className="inline-flex items-center gap-1 rounded-lg border border-line-2 bg-surface px-2.5 py-1.5 text-[11px] text-fg-2 hover:border-line-strong"
+                    >
+                      <Icon name="chevronDown" size={14} style={{ transform: sortDir === 'asc' ? 'rotate(180deg)' : 'none' }} />
+                      {sortDir === 'desc' ? 'Yeni→Eski' : 'Eski→Yeni'}
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
+          </div>
 
-            {!isLoadingMore && pageDecisions.length === 0 && job.loadError && (
-              <div className="flex flex-col items-center justify-center gap-2 px-4 py-6 text-center text-xs">
-                <span className="text-2xl">⏳</span>
-                <p className="text-slate-500">
-                  Bu sayfa yüklenemedi. Sunucu yoğun olabilir (429); birkaç saniye sonra tekrar deneyin.
-                </p>
+          {/* Toolbar */}
+          <div className="flex items-center justify-between border-b border-line px-4 py-2.5">
+            <div className="inline-flex gap-0.5 rounded-lg border border-line bg-surface-2 p-0.5">
+              {PAGE_SIZES.map((s) => (
                 <button
-                  onClick={() => void loadMore()}
-                  className="rounded-md bg-brand-600 px-3 py-1 font-medium text-white hover:bg-brand-700"
+                  key={s}
+                  onClick={() => {
+                    setPageSize(s);
+                    setPage(1);
+                  }}
+                  className={clsx(
+                    'rounded-md px-2.5 py-1 text-[11.5px] font-medium tabular-nums transition-colors',
+                    pageSize === s ? 'bg-surface text-fg shadow-sm' : 'text-fg-3 hover:text-fg-2',
+                  )}
                 >
+                  {s}
+                </button>
+              ))}
+            </div>
+            {selected.size > 0 ? (
+              <button onClick={clearSel} className="whitespace-nowrap text-[11.5px] font-medium text-accent-text hover:underline">
+                Temizle
+              </button>
+            ) : (
+              <button onClick={selectFirst} className="whitespace-nowrap text-[11.5px] font-medium text-accent-text hover:underline">
+                İlk {LIMIT}'i seç
+              </button>
+            )}
+          </div>
+
+          {/* Satırlar */}
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {pageRows.map((d) => (
+              <DecisionRow
+                key={d.id}
+                d={d}
+                checked={selected.has(d.id)}
+                active={preview.previewId === d.id}
+                recent={recentId === d.id}
+                savedColor={colorOf(d.id)}
+                savedCount={countOf(d.id)}
+                atLimit={atLimit}
+                onToggle={() => toggle(d.id)}
+                onOpen={() => openPreview(d.id)}
+                onSave={() => setSaveTarget([d])}
+              />
+            ))}
+            {pageRows.length === 0 && isLoadingMore && (
+              <div className="flex items-center justify-center gap-2 px-4 py-6 text-xs text-fg-3">
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-line-strong border-t-accent" />
+                Sonraki blok çekiliyor…
+              </div>
+            )}
+            {pageRows.length === 0 && !isLoadingMore && job?.loadError && (
+              <div className="flex flex-col items-center gap-2 px-4 py-6 text-center text-xs">
+                <p className="text-fg-3">Yüklenemedi (sunucu yoğun olabilir).</p>
+                <button onClick={() => void loadMore()} className="rounded-md bg-accent px-3 py-1 font-medium text-on-accent hover:bg-accent-hover">
                   Tekrar dene
                 </button>
               </div>
             )}
+            {pageRows.length === 0 && !isLoadingMore && !job?.loadError && (
+              <p className="px-5 py-8 text-center text-[12.5px] text-fg-3">
+                {isRefining ? 'Bu filtrelerle eşleşen karar yok.' : 'Gösterilecek karar yok.'}
+              </p>
+            )}
           </div>
 
-          {/* Sayfalama */}
-          <div className="flex items-center justify-between text-xs">
+          {/* Pager */}
+          <div className="flex items-center justify-between border-t border-line px-4 py-2.5">
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={safePage <= 1}
-              className="rounded px-2 py-1 text-slate-600 enabled:hover:bg-slate-100 disabled:opacity-30"
+              className="grid h-[30px] w-[30px] place-items-center rounded-md border border-line bg-surface text-fg-2 transition-colors enabled:hover:border-line-2 enabled:hover:bg-surface-2 disabled:opacity-30"
             >
-              ◀ Önceki
+              <Icon name="chevronLeft" size={15} />
             </button>
-            <span className="flex items-center gap-1.5 text-slate-500">
-              Sayfa <strong className="text-slate-700">{safePage}</strong> / {totalPages}
-              {isLoadingMore && (
-                <span className="h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-brand-600" />
-              )}
+            <span className="font-mono text-xs text-fg-3">
+              Sayfa <b className="text-fg">{safePage}</b> / {totalPages}
             </span>
             <button
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={safePage >= totalPages}
-              className="rounded px-2 py-1 text-slate-600 enabled:hover:bg-slate-100 disabled:opacity-30"
+              className="grid h-[30px] w-[30px] place-items-center rounded-md border border-line bg-surface text-fg-2 transition-colors enabled:hover:border-line-2 enabled:hover:bg-surface-2 disabled:opacity-30"
             >
-              Sonraki ▶
+              <Icon name="chevronRight" size={15} />
             </button>
           </div>
-        </div>
-            {/* Dışa aktarma — sol sütunun altında */}
-            <div className="flex flex-col gap-2">
-              <p className="text-[11px] font-medium text-slate-500">Seçili kararların tam metni:</p>
-              <div className="flex gap-2">
-                <Button
-                  className="flex-1"
-                  onClick={() => runFullExport('pdf')}
-                  loading={pdfState === 'generating'}
-                  disabled={selected.size === 0 || pdfState === 'generating' || exportState === 'busy'}
-                >
-                  PDF ({selected.size} karar)
-                </Button>
-                <Button
-                  className="flex-1"
-                  variant="secondary"
-                  onClick={() => runFullExport('word')}
-                  loading={exportState === 'busy'}
-                  disabled={selected.size === 0 || pdfState === 'generating' || exportState === 'busy'}
-                >
-                  Word ({selected.size} karar)
-                </Button>
-              </div>
+        </section>
+      )}
 
-              <Button variant="ghost" size="sm" onClick={() => save(keywords, job?.criteria)}>
-                ⭐ Aramayı Kaydet
-              </Button>
-
-              {(pdfState === 'done' || exportState === 'done') && (
-                <p className="text-center text-xs text-green-600">İndirildi!</p>
-              )}
-              {(pdfError || exportState === 'error') && (
-                <p className="text-center text-xs text-red-600">{pdfError ?? 'Dışa aktarma başarısız.'}</p>
-              )}
-            </div>
-          </div>
-
-          {/* Sağ pane: ≥992px'te karar detayı listenin sağında açılır */}
-          {isSplit && previewDecision && (
-            <div className="flex min-h-0 flex-[1.4]">
-              <DecisionPreview
-                decision={previewDecision}
-                keywords={keywords}
-                state={preview.state}
-                text={preview.text}
-                onClose={preview.close}
-                inline
-              />
-            </div>
+      {/* SAĞ %70 — okuma paneli */}
+      {!(isNarrow && !hasOpen) && (
+        <section className="flex min-h-0 flex-1 flex-col bg-bg">
+          {openDecision ? (
+            <ReadingPane
+              decision={openDecision}
+              terms={include}
+              state={preview.state}
+              text={preview.text}
+              saved={savedIds.has(openDecision.id)}
+              savedColor={colorOf(openDecision.id)}
+              backMode={isNarrow}
+              pdfBusy={pdfState === 'generating'}
+              onClose={closePreview}
+              onSave={() => setSaveTarget([openDecision])}
+              onCopy={copyText}
+              onPdf={pdfThis}
+            />
+          ) : (
+            <EmptyState
+              icon="textT"
+              title="Okumak için bir karar seçin"
+              body="Soldaki listeden bir karara tıkladığınızda tam metni burada açılır; arama terimleri vurgulanır."
+            />
           )}
+        </section>
+      )}
+
+      {/* Floating action bar */}
+      {selected.size > 0 && (
+        <div className="absolute bottom-[22px] left-1/2 z-20 flex -translate-x-1/2 items-center gap-2.5 rounded-[14px] border border-line-2 bg-surface py-2 pl-4 pr-2.5 shadow-lg">
+          <div className="flex items-baseline gap-1.5 text-[12.5px] text-fg-2">
+            <span className="text-sm font-bold tabular-nums text-fg">{selected.size}</span>
+            <span>karar seçildi</span>
+            <span className="text-[11px] tabular-nums text-fg-faint">/ {LIMIT}</span>
+          </div>
+          <span className="h-[22px] w-px bg-line-2" />
+          <FabBtn variant="primary" icon="pdf" label="PDF" onClick={() => runFullExport('pdf')} />
+          <FabBtn variant="outline" icon="word" label="Word" onClick={() => runFullExport('word')} />
+          <FabBtn variant="ghost" icon="bookmark" label="Koleksiyona ekle" onClick={() => setSaveTarget([...selected].map((id) => decisions.find((d) => d.id === id)).filter(Boolean) as Decision[])} />
+          <span className="h-[22px] w-px bg-line-2" />
+          <button onClick={clearSel} title="Seçimi temizle" className="grid h-[30px] w-[30px] place-items-center rounded-lg text-fg-3 transition-colors hover:bg-surface-3 hover:text-fg">
+            <Icon name="x" size={15} />
+          </button>
         </div>
       )}
 
-      {/* Dar/orta panel: tam-yüzey katman (geri tuşuyla listeye dönülür) */}
-      {!isWide && previewDecision && (
-        <DecisionPreview
-          decision={previewDecision}
-          keywords={keywords}
-          state={preview.state}
-          text={preview.text}
-          onClose={preview.close}
+      {saveTarget && saveTarget.length > 0 && (
+        <SaveDecisionModal decisions={saveTarget} keywords={keywords} onClose={() => setSaveTarget(null)} />
+      )}
+
+      {exporting && (
+        <ExportProgress
+          format={exporting}
+          fetching={job?.phase === 'fulltext'}
+          generating={pdfState === 'generating' || exportState === 'busy'}
+          done={pdfState === 'done' || exportState === 'done'}
+          error={pdfState === 'error' || exportState === 'error'}
+          current={job?.fulltextProgress.current ?? 0}
+          total={job?.fulltextProgress.total ?? 0}
+          startedAt={job?.fulltextStartedAt ?? null}
+          throttled={!!job?.throttled}
+          onCancel={cancelExport}
+          onClose={closeExport}
         />
       )}
     </div>
   );
 }
 
-// ─── Tam metin (export) ilerleme paneli ────────────────────────────────────────
+/* ── Floating bar butonu ── */
+function FabBtn({ variant, icon, label, onClick }: { variant: 'primary' | 'outline' | 'ghost'; icon: 'pdf' | 'word' | 'bookmark'; label: string; onClick: () => void }) {
+  const cls =
+    variant === 'primary'
+      ? 'bg-accent text-on-accent hover:bg-accent-hover'
+      : variant === 'outline'
+        ? 'border border-line-2 bg-surface text-fg hover:bg-surface-2'
+        : 'text-fg-2 hover:bg-surface-3 hover:text-fg';
+  return (
+    <button onClick={onClick} className={'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ' + cls}>
+      <Icon name={icon} size={15} /> {label}
+    </button>
+  );
+}
 
-function FulltextProgress({
-  job,
-  onCancel,
+/* ── Karar satırı ── */
+function DecisionRow({
+  d,
+  checked,
+  active,
+  recent,
+  savedColor,
+  savedCount,
+  atLimit,
+  onToggle,
+  onOpen,
+  onSave,
 }: {
-  job: NonNullable<ReturnType<typeof useScraping>['job']>;
-  onCancel: () => void;
+  d: Decision;
+  checked: boolean;
+  active: boolean;
+  recent: boolean;
+  savedColor?: string;
+  savedCount: number;
+  atLimit: boolean;
+  onToggle: () => void;
+  onOpen: () => void;
+  onSave: () => void;
 }) {
-  const { current, total } = job.fulltextProgress;
-  const pct = total > 0 ? Math.round((current / total) * 100) : 0;
+  const disabled = !checked && atLimit;
+  const saved = savedCount > 0;
+  return (
+    <div
+      onClick={onOpen}
+      className={clsx(
+        'group flex cursor-pointer items-start gap-2.5 border-b border-l-2 border-line py-2.5 pl-3.5 pr-4 transition-colors',
+        active ? 'border-l-accent bg-accent-weak' : 'border-l-transparent hover:bg-surface-2',
+        checked && !active && 'bg-accent-weak',
+        recent && !active && 'row-flash',
+      )}
+    >
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          if (!disabled) onToggle();
+        }}
+        role="checkbox"
+        aria-checked={checked}
+        disabled={disabled}
+        className={clsx(
+          'mt-0.5 grid h-[17px] w-[17px] shrink-0 place-items-center rounded-[5px] border-[1.5px] transition-colors',
+          checked ? 'border-accent bg-accent text-on-accent' : 'border-line-strong bg-surface hover:border-accent',
+          disabled && 'opacity-30',
+        )}
+      >
+        {checked && <Icon name="check" size={12} stroke={2.4} />}
+      </button>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5 text-[13px] font-semibold tracking-[-0.01em] text-fg">
+          {savedCount >= 2 ? (
+            <span
+              className="shrink-0 rounded-full bg-accent-weak px-1.5 text-[10px] font-semibold tabular-nums text-accent-text"
+              title={`${savedCount} kategoride`}
+            >
+              +{savedCount}
+            </span>
+          ) : (
+            savedColor && (
+              <span
+                className="h-[7px] w-[7px] shrink-0 rounded-full"
+                style={{ background: savedColor }}
+                title="Koleksiyonda"
+              />
+            )
+          )}
+          <span className="truncate">{d.chamber}</span>
+        </div>
+        <div className="mt-[3px] font-mono text-[11.5px] text-fg-3">
+          {d.esasNo} · {d.kararNo} · {formatDateTR(d.date)}
+        </div>
+      </div>
+      <div className={clsx('flex shrink-0 gap-px transition-opacity', active ? 'opacity-100' : 'opacity-0 group-hover:opacity-100')}>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onSave();
+          }}
+          title={saved ? 'Koleksiyonda — düzenle' : 'Koleksiyona kaydet'}
+          className={
+            'grid h-[27px] w-[27px] place-items-center rounded-md transition-colors hover:bg-surface-3 ' +
+            (saved ? 'text-accent' : 'text-fg-3 hover:text-accent-text')
+          }
+        >
+          <Icon name="bookmark" size={15} style={saved ? { fill: 'currentColor' } : undefined} />
+        </button>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpen();
+          }}
+          title="Önizle"
+          className="grid h-[27px] w-[27px] place-items-center rounded-md text-fg-3 transition-colors hover:bg-surface-3 hover:text-accent-text"
+        >
+          <Icon name="eye" size={15} />
+        </button>
+      </div>
+    </div>
+  );
+}
 
-  // ETA: gerçek hıza göre (geçen süre ÷ biten × kalan). Yavaşlama olunca uzar.
-  let etaText = 'hesaplanıyor…';
-  if (job.fulltextStartedAt && current > 0 && current < total) {
-    const elapsed = Date.now() - new Date(job.fulltextStartedAt).getTime();
-    const remainingSec = Math.round(((elapsed / current) * (total - current)) / 1000);
-    etaText =
-      remainingSec >= 60
-        ? `~${Math.floor(remainingSec / 60)} dk ${remainingSec % 60} sn`
-        : `~${remainingSec} sn`;
+/* ── Export ilerleme + ETA modalı ── */
+function ExportProgress({
+  format,
+  fetching,
+  generating,
+  done,
+  error,
+  current,
+  total,
+  startedAt,
+  throttled,
+  onCancel,
+  onClose,
+}: {
+  format: ExportFormat;
+  fetching: boolean;
+  generating: boolean;
+  done: boolean;
+  error: boolean;
+  current: number;
+  total: number;
+  startedAt: string | null;
+  throttled: boolean;
+  onCancel: () => void;
+  onClose: () => void;
+}) {
+  const label = format === 'pdf' ? 'PDF' : 'Word';
+  const pct = total > 0 ? Math.round((current / total) * 100) : 0;
+  let eta = 'hesaplanıyor…';
+  if (startedAt && current > 0 && current < total) {
+    const elapsed = Date.now() - new Date(startedAt).getTime();
+    const rem = Math.round(((elapsed / current) * (total - current)) / 1000);
+    eta = rem >= 60 ? `~${Math.floor(rem / 60)} dk ${rem % 60} sn` : `~${rem} sn`;
   }
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-brand-100 bg-brand-50 p-3">
-      <div className="flex items-center justify-between text-xs font-medium text-brand-800">
-        <span>Seçili kararların tam metni çekiliyor…</span>
-        <span>
-          {current} / {total}
-        </span>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-[var(--scrim)] p-6">
+      <div className="flex w-full max-w-[440px] flex-col gap-4 rounded-xl border border-line-2 bg-surface p-[22px] shadow-lg">
+        {done ? (
+          <>
+            <div className="flex items-start gap-3.5">
+              <span className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-full bg-accent text-on-accent">
+                <Icon name="check" size={18} stroke={2.6} />
+              </span>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-fg">{label} hazır</p>
+                <p className="mt-1 text-xs leading-relaxed text-fg-3">Seçili kararların tam metni indirildi. Anahtar kelimeler vurgulandı.</p>
+              </div>
+            </div>
+            <div className="flex justify-end">
+              <button onClick={onClose} className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-on-accent hover:bg-accent-hover">
+                Kapat
+              </button>
+            </div>
+          </>
+        ) : error ? (
+          <>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-fg">Dışa aktarma başarısız</p>
+              <p className="mt-1 text-xs text-fg-3">Bir hata oluştu. Tekrar deneyebilirsiniz.</p>
+            </div>
+            <div className="flex justify-end">
+              <button onClick={onClose} className="rounded-md border border-line-2 bg-surface px-3 py-1.5 text-xs font-medium text-fg hover:bg-surface-2">
+                Kapat
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="flex items-start gap-3.5">
+              <span className="h-[26px] w-[26px] shrink-0 animate-spin rounded-full border-[2.5px] border-accent-weak-2 border-t-accent" />
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-fg">
+                  {generating ? `${label} oluşturuluyor…` : 'Seçili kararların tam metni çekiliyor…'}
+                </p>
+                <p className="mt-1 text-xs leading-relaxed text-fg-3">
+                  {generating ? 'Belge hazırlanıyor, birazdan inecek.' : `${label} için ${total} kararın metni Yargıtay'dan indiriliyor.`}
+                </p>
+              </div>
+            </div>
+            {fetching && (
+              <>
+                <div className="h-[7px] overflow-hidden rounded-full bg-surface-3">
+                  <div className="h-full rounded-full bg-accent transition-all" style={{ width: pct + '%' }} />
+                </div>
+                <div className="flex justify-between font-mono text-[11.5px] text-fg-3">
+                  <span><b className="text-fg">{current}</b> / {total}</span>
+                  <span>Tahmini kalan: {eta}</span>
+                </div>
+                {throttled && (
+                  <p className="text-[11.5px] text-warn">Sunucu hız sınırı uyguladı (429); otomatik yavaşlatılıp devam ediliyor.</p>
+                )}
+                <div className="flex justify-end">
+                  <button onClick={onCancel} className="rounded-md px-3 py-1.5 text-xs font-medium text-fg-2 hover:bg-surface-3">
+                    İptal
+                  </button>
+                </div>
+              </>
+            )}
+          </>
+        )}
       </div>
-
-      <div className="h-2 w-full overflow-hidden rounded-full bg-brand-100">
-        <div className="h-full bg-brand-600 transition-all" style={{ width: `${pct}%` }} />
-      </div>
-
-      <div className="flex items-center justify-between text-[11px] text-slate-600">
-        <span>Tahmini kalan süre: {etaText}</span>
-        <button className="text-red-600 hover:underline" onClick={onCancel}>
-          İptal
-        </button>
-      </div>
-
-      {job.throttled && (
-        <p className="text-[11px] text-amber-700">
-          ⏳ Sunucu hız sınırı uyguladı; otomatik yavaşlatılıp devam ediliyor.
-        </p>
-      )}
     </div>
   );
 }

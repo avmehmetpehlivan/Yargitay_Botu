@@ -12,6 +12,9 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@fontsource/geist-mono": "^5.2.8",
+    "@fontsource/geist-sans": "^5.2.5",
+    "@fontsource/source-serif-4": "^5.2.9",
     "clsx": "^2.1.1",
     "pdfmake": "^0.2.10",
     "react": "^18.3.1",

@@ -1,11 +1,10 @@
 import { useRef, type KeyboardEvent } from 'react';
-import { Badge } from '../common/Badge';
+import { clsx } from 'clsx';
+import { Icon } from '../Icon';
 
 interface KeywordInputProps {
   value: string[];
   onChange: (keywords: string[]) => void;
-  /** Henüz chip'e dönüşmemiş input metni (SearchView'da tutulur, böylece
-   *  "Toplamaya Başla"da commit edilmemiş metin de aramaya dahil edilebilir). */
   inputValue: string;
   onInputChange: (text: string) => void;
   label?: string;
@@ -15,18 +14,21 @@ interface KeywordInputProps {
   disabled?: boolean;
 }
 
+/** Chip'ler ve input tek kutuda; Enter ekler, Backspace son chip'i siler, metin
+ *  varken sağda "Ekle". accent (içersin) / danger (içermesin) renkli chip'ler. */
 export function KeywordInput({
   value,
   onChange,
   inputValue,
   onInputChange,
   label = 'Anahtar Kelimeler',
-  hint = '(Enter ile ekle)',
-  placeholder = 'Örn: işe iade, fazla mesai…',
+  hint,
+  placeholder = 'Örn: işe iade',
   badgeVariant = 'brand',
   disabled,
 }: KeywordInputProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const red = badgeVariant === 'red';
 
   const addKeyword = () => {
     const trimmed = inputValue.trim();
@@ -37,50 +39,57 @@ export function KeywordInput({
     onChange([...value, trimmed]);
     onInputChange('');
   };
-
-  const removeKeyword = (kw: string) => {
-    onChange(value.filter((k) => k !== kw));
-  };
+  const removeKeyword = (kw: string) => onChange(value.filter((k) => k !== kw));
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' || e.key === ',') {
       e.preventDefault();
       addKeyword();
-    }
-    if (e.key === 'Backspace' && !inputValue && value.length) {
+    } else if (e.key === 'Backspace' && !inputValue && value.length) {
       onChange(value.slice(0, -1));
     }
   };
 
   return (
-    <div className="space-y-2">
-      <label className="block text-xs font-medium text-slate-700">
-        {label}
-        <span className="ml-1 text-slate-400 font-normal">{hint}</span>
-      </label>
+    <div className="flex flex-col gap-2">
+      <div className="flex items-baseline gap-1.5">
+        <span className="text-[12.5px] font-semibold text-fg">{label}</span>
+        {hint && <em className="not-italic text-[11.5px] text-fg-3">{hint}</em>}
+      </div>
 
-      {/* Mevcut keyword'ler */}
-      {value.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {value.map((kw) => (
-            <Badge key={kw} variant={badgeVariant} className="gap-1">
-              {kw}
-              {!disabled && (
-                <button
-                  onClick={() => removeKeyword(kw)}
-                  className="ml-0.5 leading-none opacity-60 hover:opacity-100"
-                  aria-label={`${kw} kaldır`}
-                >
-                  ×
-                </button>
-              )}
-            </Badge>
-          ))}
-        </div>
-      )}
-
-      {/* Input */}
-      <div className="flex gap-2">
+      <div
+        onClick={() => inputRef.current?.focus()}
+        className={clsx(
+          'flex min-h-[44px] cursor-text flex-wrap items-center gap-1.5 rounded-md border border-line-2 bg-surface px-2.5 py-2 transition-colors',
+          red
+            ? 'focus-within:border-danger focus-within:shadow-[0_0_0_3px_var(--danger-weak)]'
+            : 'focus-within:border-accent focus-within:shadow-[0_0_0_3px_var(--accent-weak)]',
+        )}
+      >
+        {value.map((kw) => (
+          <span
+            key={kw}
+            className={clsx(
+              'inline-flex items-center gap-1 whitespace-nowrap rounded-[7px] px-2.5 py-1 text-xs font-medium',
+              red ? 'bg-danger-weak text-danger' : 'bg-accent-weak text-accent-text',
+            )}
+          >
+            {red && '− '}
+            {kw}
+            {!disabled && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  removeKeyword(kw);
+                }}
+                className="grid h-3.5 w-3.5 place-items-center rounded opacity-60 transition-opacity hover:bg-black/10 hover:opacity-100"
+                aria-label={`${kw} kaldır`}
+              >
+                <Icon name="x" size={11} stroke={2.2} />
+              </button>
+            )}
+          </span>
+        ))}
         <input
           ref={inputRef}
           type="text"
@@ -88,19 +97,17 @@ export function KeywordInput({
           onChange={(e) => onInputChange(e.target.value)}
           onKeyDown={handleKeyDown}
           disabled={disabled}
-          placeholder={placeholder}
-          className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm
-                     placeholder:text-slate-400 focus:border-brand-600 focus:outline-none
-                     focus:ring-1 focus:ring-brand-600 disabled:bg-slate-50 disabled:cursor-not-allowed"
+          placeholder={value.length ? '' : placeholder}
+          className="min-w-[90px] flex-1 border-none bg-transparent px-0.5 py-0.5 text-[13.5px] text-fg placeholder:text-fg-faint focus:outline-none"
         />
-        <button
-          onClick={addKeyword}
-          disabled={disabled || !inputValue.trim()}
-          className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600
-                     hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          Ekle
-        </button>
+        {inputValue.trim() && !disabled && (
+          <button
+            onClick={addKeyword}
+            className="rounded-[7px] bg-surface-3 px-2.5 py-1 text-[11.5px] font-semibold text-fg-2 transition-colors hover:bg-accent hover:text-on-accent"
+          >
+            Ekle
+          </button>
+        )}
       </div>
     </div>
   );

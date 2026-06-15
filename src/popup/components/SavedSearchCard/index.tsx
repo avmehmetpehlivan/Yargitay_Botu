@@ -2,8 +2,6 @@ import { useState } from 'react';
 import type { SavedSearch } from '../../../shared/types/SavedSearch';
 import { formatDateTimeTR } from '../../../shared/utils/dateUtils';
 import { summarizeCriteria } from '../../../shared/utils/criteriaUtils';
-import { Badge } from '../common/Badge';
-import { Button } from '../common/Button';
 
 interface SavedSearchCardProps {
   saved: SavedSearch;
@@ -12,12 +10,7 @@ interface SavedSearchCardProps {
   onDelete: (id: string) => void;
 }
 
-export function SavedSearchCard({
-  saved,
-  onLoad,
-  onUpdateLabel,
-  onDelete,
-}: SavedSearchCardProps) {
+export function SavedSearchCard({ saved, onLoad, onUpdateLabel, onDelete }: SavedSearchCardProps) {
   const [editing, setEditing] = useState(false);
   const [labelInput, setLabelInput] = useState(saved.label ?? '');
 
@@ -26,65 +19,51 @@ export function SavedSearchCard({
     setEditing(false);
   };
 
+  const exclude = saved.criteria?.excludeKeywords ?? [];
+
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2">
-      {/* Başlık satırı */}
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex-1 min-w-0">
-          {editing ? (
-            <input
-              autoFocus
-              value={labelInput}
-              onChange={(e) => setLabelInput(e.target.value)}
-              onBlur={saveLabel}
-              onKeyDown={(e) => e.key === 'Enter' && saveLabel()}
-              placeholder="Bir isim ver (isteğe bağlı)"
-              className="w-full rounded border border-brand-300 px-2 py-1 text-xs focus:outline-none"
-            />
-          ) : (
-            <button
-              onClick={() => setEditing(true)}
-              className="text-left text-sm font-medium text-slate-800 hover:text-brand-700 truncate"
-            >
-              {saved.label || saved.keywords.join(' • ')}
-            </button>
-          )}
-        </div>
+    <div className="flex flex-col gap-3 rounded-lg border border-line bg-surface p-4">
+      <div className="flex items-baseline justify-between gap-3">
+        {editing ? (
+          <input
+            autoFocus
+            value={labelInput}
+            onChange={(e) => setLabelInput(e.target.value)}
+            onBlur={saveLabel}
+            onKeyDown={(e) => e.key === 'Enter' && saveLabel()}
+            placeholder="Bir isim ver (isteğe bağlı)"
+            className="flex-1 rounded-md border border-accent bg-surface px-2 py-1 text-sm text-fg focus:outline-none"
+          />
+        ) : (
+          <button onClick={() => setEditing(true)} className="min-w-0 flex-1 truncate text-left text-sm font-semibold text-fg hover:text-accent-text">
+            {saved.label || saved.keywords.join(' • ')}
+          </button>
+        )}
+        <span className="shrink-0 font-mono text-[11px] text-fg-3">{formatDateTimeTR(saved.savedAt)}</span>
       </div>
 
-      {/* Keyword'ler (label varsa göster) */}
-      {saved.label && (
-        <div className="flex flex-wrap gap-1">
-          {saved.keywords.map((kw) => (
-            <Badge key={kw} variant="brand">{kw}</Badge>
-          ))}
-        </div>
-      )}
+      <div className="flex flex-wrap gap-1.5">
+        {saved.keywords.map((kw) => (
+          <span key={kw} className="rounded-[7px] bg-accent-weak px-2 py-0.5 text-[11.5px] font-medium text-accent-text">{kw}</span>
+        ))}
+        {exclude.map((kw) => (
+          <span key={kw} className="rounded-[7px] bg-danger-weak px-2 py-0.5 text-[11.5px] font-medium text-danger">− {kw}</span>
+        ))}
+        {summarizeCriteria(saved.criteria).map((p) => (
+          <span key={p} className="rounded-[7px] border border-line bg-surface-2 px-2 py-0.5 text-[11.5px] font-medium text-fg-2">{p}</span>
+        ))}
+      </div>
 
-      {/* Detaylı arama parametreleri */}
-      {summarizeCriteria(saved.criteria).length > 0 && (
-        <div className="flex flex-wrap gap-1">
-          {summarizeCriteria(saved.criteria).map((p) => (
-            <Badge key={p} variant="slate">{p}</Badge>
-          ))}
-        </div>
-      )}
-
-      {/* Meta */}
-      <p className="text-xs text-slate-400">Kaydedildi: {formatDateTimeTR(saved.savedAt)}</p>
-
-      {/* Aksiyonlar */}
-      <div className="flex gap-2">
-        <Button size="sm" onClick={() => onLoad(saved)} className="flex-1">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <button onClick={() => onLoad(saved)} className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-on-accent transition-colors hover:bg-accent-hover">
           Aramaya Yükle
-        </Button>
-        <Button size="sm" variant="ghost" onClick={() => setEditing(true)}>
+        </button>
+        <button onClick={() => setEditing(true)} className="rounded-md px-3 py-1.5 text-xs font-medium text-fg-2 transition-colors hover:bg-surface-3 hover:text-fg">
           Yeniden adlandır
-        </Button>
-        <Button size="sm" variant="ghost" onClick={() => onDelete(saved.id)}
-          className="text-red-500 hover:text-red-700 hover:bg-red-50">
+        </button>
+        <button onClick={() => onDelete(saved.id)} className="rounded-md px-3 py-1.5 text-xs font-medium text-danger transition-colors hover:bg-danger-weak">
           Sil
-        </Button>
+        </button>
       </div>
     </div>
   );

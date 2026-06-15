@@ -8,15 +8,11 @@ interface Props {
   disabled?: boolean;
 }
 
-/**
- * Açılır kutu (combobox) içinde checkbox'larla çoklu seçim.
- * Seçim "Tümü / N seçili" olarak özetlenir; ✕ ile temizlenir.
- */
+/** Açılır kutuda checkbox'larla çoklu seçim ("Tümü / N seçili", ✕ ile temizle). */
 export function CheckboxDropdown({ label, options, value, onChange, disabled }: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  // Dışarı tıklayınca kapat
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => {
@@ -32,18 +28,18 @@ export function CheckboxDropdown({ label, options, value, onChange, disabled }: 
   const summary = value.length === 0 ? 'Tümü' : `${value.length} seçili`;
 
   return (
-    <div ref={ref} className="relative">
-      <span className="text-[11px] font-medium text-slate-600">{label}</span>
+    <div ref={ref} className="relative flex flex-col gap-1.5">
+      <span className="text-[11px] font-semibold uppercase tracking-wider text-fg-2">{label}</span>
 
-      <div className="mt-1 flex items-stretch rounded-md border border-slate-200 bg-white">
+      <div className="flex items-stretch rounded-lg border border-line-2 bg-surface">
         <button
           type="button"
           disabled={disabled}
           onClick={() => setOpen((o) => !o)}
-          className="flex flex-1 items-center justify-between px-2 py-1 text-xs disabled:bg-slate-50"
+          className="flex flex-1 items-center justify-between px-2.5 py-1.5 text-xs disabled:opacity-50"
         >
-          <span className={value.length ? 'text-slate-700' : 'text-slate-400'}>{summary}</span>
-          <span className="text-slate-400">▾</span>
+          <span className={value.length ? 'text-fg' : 'text-fg-3'}>{summary}</span>
+          <span className="text-fg-3">▾</span>
         </button>
         {value.length > 0 && (
           <button
@@ -51,7 +47,7 @@ export function CheckboxDropdown({ label, options, value, onChange, disabled }: 
             disabled={disabled}
             title="Temizle"
             onClick={() => onChange([])}
-            className="border-l border-slate-200 px-2 text-slate-400 hover:text-red-600"
+            className="border-l border-line px-2 text-fg-3 hover:text-danger"
           >
             ✕
           </button>
@@ -59,23 +55,20 @@ export function CheckboxDropdown({ label, options, value, onChange, disabled }: 
       </div>
 
       {open && (
-        <div className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded-md border border-slate-200 bg-white shadow-lg">
+        <div className="absolute top-full z-10 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-line-2 bg-surface shadow-md">
           {value.length > 0 && (
             <button
               type="button"
               onClick={() => onChange([])}
-              className="w-full border-b border-slate-100 px-2 py-1 text-left text-[11px] text-red-600 hover:bg-slate-50"
+              className="w-full border-b border-line px-2.5 py-1.5 text-left text-[11px] text-danger hover:bg-surface-2"
             >
               Seçimi temizle ({value.length})
             </button>
           )}
           {options.map((o) => (
-            <label
-              key={o}
-              className="flex cursor-pointer items-center gap-2 px-2 py-1 text-xs hover:bg-slate-50"
-            >
-              <input type="checkbox" checked={value.includes(o)} onChange={() => toggle(o)} />
-              <span className="text-slate-700">{o}</span>
+            <label key={o} className="flex cursor-pointer items-center gap-2 px-2.5 py-1.5 text-xs hover:bg-surface-2">
+              <input type="checkbox" checked={value.includes(o)} onChange={() => toggle(o)} className="accent-[var(--accent)]" />
+              <span className="text-fg">{o}</span>
             </label>
           ))}
         </div>

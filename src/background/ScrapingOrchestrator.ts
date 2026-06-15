@@ -8,6 +8,9 @@ import { getCachedFulltexts, putFulltexts } from '../shared/utils/fulltextCache'
 
 type JobPhase = ScrapingJob['phase'];
 
+// MV3 service worker atıl kalınca sonlanır; job'ı oturum-belleğinde tutarız.
+const SESSION_KEY = 'orchestratorJob';
+
 /**
  * Content script'in tab'da çalıştığından emin olur.
  * Önce PING ile yoklar; cevap yoksa content.js'i chrome.scripting ile enjekte
@@ -32,9 +35,40 @@ export class ScrapingOrchestrator {
   private metadataDecisions: DecisionMetadata[] = []; // çekilen tüm blokların metadata'sı
   private startedAt = 0;
   private cachedCount = 0; // tam metin fazında cache'ten gelen sayı (ilerleme tabanı)
+  private triedHydrate = false;
 
   onComplete: ((result: SearchResult) => void) | null = null;
   onError:    ((error: string) => void) | null = null;
+
+  // ─── Kalıcılık (MV3 SW ölünce bellek silinir → storage.session ile hayatta tut) ──
+
+  /** Job'ı oturum-belleğine yazar (SW yeniden başlasa da loadMore/export sürebilsin). */
+  private save(): void {
+    if (this.job) void chrome.storage.session.set({ [SESSION_KEY]: this.job }).catch(() => {});
+  }
+
+  /** Bellekte job yoksa oturum-belleğinden geri yükler (SW yeni başlamış olabilir). */
+  async hydrate(): Promise<void> {
+    if (this.job || this.triedHydrate) return;
+    this.triedHydrate = true;
+    try {
+      const r = await chrome.storage.session.get(SESSION_KEY);
+      const saved = r[SESSION_KEY] as ScrapingJob | undefined;
+      if (saved) {
+        // SW yarıda ölmüşse devam eden faz kaybolmuştur → eldekiyle 'complete' say
+        // (sonsuz spinner / "zaten çalışıyor" kilidini önler).
+        if (saved.phase === 'metadata' || saved.phase === 'fulltext') {
+          saved.phase = 'complete';
+          saved.throttled = false;
+        }
+        this.job = saved;
+        // metadataDecisions = fullText'siz kopya (fetchFulltexts seçim için kullanır).
+        this.metadataDecisions = saved.decisions.map(({ fullText: _f, ...rest }) => rest);
+      }
+    } catch {
+      /* yoksay */
+    }
+  }
 
   // ─── Public API ──────────────────────────────────────────────────────────
 
@@ -109,6 +143,7 @@ export class ScrapingOrchestrator {
 
     this.setPhase('idle');
     this.job = null;
+    void chrome.storage.session.remove(SESSION_KEY).catch(() => {});
   }
 
   getJob(): ScrapingJob | null { return this.job; }
@@ -205,7 +240,7 @@ export class ScrapingOrchestrator {
     if (!this.job) return;
 
     switch (msg.action) {
-      case 'METADATA_BATCH':    this.onMetadataBatch(msg.decisions, msg.recordsTotal); break;
+      case 'METADATA_BATCH':    this.onMetadataBatch(msg.decisions, msg.recordsTotal, msg.hasMore); break;
       case 'FULLTEXT_BATCH':    this.onFulltextBatch(msg.decisions);                       break;
       case 'FULLTEXT_PROGRESS': this.onFulltextProgress(msg.done, msg.total, msg.throttled); break;
       case 'CONTENT_COMPLETE':  this.onContentComplete();                                  break;
@@ -215,16 +250,19 @@ export class ScrapingOrchestrator {
 
   // ─── Private ─────────────────────────────────────────────────────────────
 
-  private onMetadataBatch(decisions: DecisionMetadata[], recordsTotal: number): void {
+  private onMetadataBatch(decisions: DecisionMetadata[], recordsTotal: number, hasMore: boolean): void {
     if (!this.job) return;
 
     const wasFirstBlock = this.metadataDecisions.length === 0;
 
-    // Bloğu biriktir (cap yok — kullanıcı tüm sonuçlar boyunca sayfalayabilir).
-    this.metadataDecisions = [...this.metadataDecisions, ...decisions];
+    // Bloğu biriktir — id'ye göre dedupe (sunucu pencere dışında tekrar/aynı sayfayı
+    // dönebilir). Yeni kayıt eklenmediyse de tükenmiş say.
+    const existing = new Set(this.metadataDecisions.map((d) => d.id));
+    const fresh = decisions.filter((d) => !existing.has(d.id));
+    this.metadataDecisions = [...this.metadataDecisions, ...fresh];
     this.job.recordsTotal = Math.max(this.job.recordsTotal ?? 0, recordsTotal);
 
-    const effectiveTotal = this.job.recordsTotal; // listelenebilecek = sitedeki toplam
+    const effectiveTotal = this.job.recordsTotal; // sitedeki toplam (yalnızca bilgi/etiket)
     this.job.effectiveTotal = effectiveTotal;
 
     // Var olan tam metinleri koru (kullanıcı önceki blokta fulltext çekmiş olabilir).
@@ -236,7 +274,9 @@ export class ScrapingOrchestrator {
       fullText: existingText.get(d.id) ?? '',
     }));
 
-    this.job.canLoadMore = this.job.decisions.length < effectiveTotal;
+    // Daha çekilebilir mi: sunucu tam sayfa döndü (hasMore) VE bu blokta yeni kayıt
+    // geldi. recordsTotal'a güvenmiyoruz (derin sayfalarda boş dönüp şişkin kalıyor).
+    this.job.canLoadMore = hasMore && fresh.length > 0;
     this.job.metadataProgress = { current: this.job.decisions.length, total: effectiveTotal };
     this.job.loadError = undefined; // blok başarıyla geldi
     this.setPhase('complete');
@@ -308,6 +348,9 @@ export class ScrapingOrchestrator {
   }
 
   private setPhase(phase: JobPhase): void {
-    if (this.job) this.job.phase = phase;
+    if (this.job) {
+      this.job.phase = phase;
+      this.save(); // her faz değişiminde job'ı oturum-belleğine yaz
+    }
   }
 }

@@ -1,8 +1,16 @@
 export const STORAGE_KEYS = {
-  searchHistory: 'searchHistory',
-  savedSearches: 'savedSearches',
-  settings:      'settings',
+  searchHistory:      'searchHistory',
+  savedSearches:      'savedSearches',
+  decisionCategories: 'decisionCategories',
+  savedDecisions:     'savedDecisions',
+  settings:           'settings',
 } as const;
+
+// Kategori renk paleti (kullanıcı bunlardan seçer veya özel renk girer).
+export const COLLECTION_COLORS = [
+  '#FFFF00', '#FF0000', '#FFA500', '#A52A2A', '#008000',
+  '#0000FF', '#800080', '#FFC0CB', '#000000', '#808080',
+] as const;
 
 export const STORAGE_LIMITS = {
   maxHistoryItems: 50,

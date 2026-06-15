@@ -2,19 +2,121 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Chrome extension popup scroll gizleme */
-::-webkit-scrollbar {
-  width: 4px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 2px;
+/* ============================================================
+   Design token'ları — sessiz hukuki araştırma çalışma alanı.
+   Tipografi öncelikli, hairline yüzeyler, sakinleştirilmiş teal accent.
+   Tema: <html data-theme="light|dark">, accent: <html data-accent="neutral|blue">
+   (teal = varsayılan, attribute gerekmez). Tailwind bunları var(--…) ile okur.
+   ============================================================ */
+:root {
+  --font-ui: 'Geist Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --font-read: 'Source Serif 4', Georgia, 'Times New Roman', serif;
+
+  --r-sm: 6px;
+  --r-md: 9px;
+  --r-lg: 13px;
+  --r-xl: 18px;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-/* Yan panel: uygulama pencerenin tamamını kaplar (sabit boyut yok). */
+:root,
+[data-theme='light'] {
+  --bg: #f7f7f5;
+  --surface: #ffffff;
+  --surface-2: #f3f3f1;
+  --surface-3: #ecece9;
+  --rail: #f1f1ef;
+
+  --text: #1b1b18;
+  --text-2: #56564f;
+  --text-3: #8a8a82;
+  --text-faint: #b4b4ac;
+
+  --border: #e7e7e2;
+  --border-2: #dededa;
+  --border-strong: #cfcfca;
+
+  --accent: #2c7a72;
+  --accent-hover: #246058;
+  --accent-text: #235c55;
+  --accent-weak: rgba(44, 122, 114, 0.09);
+  --accent-weak-2: rgba(44, 122, 114, 0.14);
+  --on-accent: #ffffff;
+
+  --danger: #b4453a;
+  --danger-weak: rgba(180, 69, 58, 0.09);
+  --warn-text: #8a6d1f;
+
+  --hl-bg: #fbeaa8;
+  --hl-text: #3d3413;
+
+  --shadow-sm: 0 1px 2px rgba(24, 24, 20, 0.05), 0 1px 1px rgba(24, 24, 20, 0.03);
+  --shadow-md: 0 6px 20px -6px rgba(24, 24, 20, 0.16), 0 2px 6px -2px rgba(24, 24, 20, 0.08);
+  --shadow-lg: 0 18px 48px -12px rgba(24, 24, 20, 0.26), 0 6px 16px -8px rgba(24, 24, 20, 0.14);
+
+  --scrollthumb: #d8d8d2;
+  --scrim: rgba(22, 22, 18, 0.34);
+  color-scheme: light;
+}
+
+[data-theme='dark'] {
+  --bg: #131312;
+  --surface: #1a1a18;
+  --surface-2: #201f1d;
+  --surface-3: #272622;
+  --rail: #161614;
+
+  --text: #ededea;
+  --text-2: #a6a69e;
+  --text-3: #75746c;
+  --text-faint: #54534c;
+
+  --border: #2a2926;
+  --border-2: #33322e;
+  --border-strong: #403f3a;
+
+  --accent: #54a89e;
+  --accent-hover: #67b8ae;
+  --accent-text: #6fc0b5;
+  --accent-weak: rgba(84, 168, 158, 0.13);
+  --accent-weak-2: rgba(84, 168, 158, 0.2);
+  --on-accent: #0c1413;
+
+  --danger: #d97a6f;
+  --danger-weak: rgba(217, 122, 111, 0.14);
+  --warn-text: #cdab5e;
+
+  --hl-bg: rgba(214, 178, 74, 0.32);
+  --hl-text: #f3e7c2;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 6px 22px -6px rgba(0, 0, 0, 0.55), 0 2px 6px -2px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 22px 56px -14px rgba(0, 0, 0, 0.7), 0 8px 20px -8px rgba(0, 0, 0, 0.5);
+
+  --scrollthumb: #38372f;
+  --scrim: rgba(0, 0, 0, 0.55);
+  color-scheme: dark;
+}
+
+/* Accent yönleri (teal = varsayılan). */
+[data-accent='neutral'] {
+  --accent: #34342f; --accent-hover: #1f1f1b; --accent-text: #3a3a34;
+  --accent-weak: rgba(52, 52, 47, 0.08); --accent-weak-2: rgba(52, 52, 47, 0.13); --on-accent: #ffffff;
+}
+[data-theme='dark'][data-accent='neutral'] {
+  --accent: #d8d7cf; --accent-hover: #ecebe3; --accent-text: #d3d2ca;
+  --accent-weak: rgba(216, 215, 207, 0.12); --accent-weak-2: rgba(216, 215, 207, 0.18); --on-accent: #1a1a18;
+}
+[data-accent='blue'] {
+  --accent: #2f64d8; --accent-hover: #2553bd; --accent-text: #2a5ec9;
+  --accent-weak: rgba(47, 100, 216, 0.09); --accent-weak-2: rgba(47, 100, 216, 0.14); --on-accent: #ffffff;
+}
+[data-theme='dark'][data-accent='blue'] {
+  --accent: #6f9bf2; --accent-hover: #86acf6; --accent-text: #8aaef5;
+  --accent-weak: rgba(111, 155, 242, 0.14); --accent-weak-2: rgba(111, 155, 242, 0.2); --on-accent: #0c1220;
+}
+
 html,
 body {
   margin: 0;
@@ -22,8 +124,68 @@ body {
   height: 100%;
 }
 
+body {
+  font-family: var(--font-ui);
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
 #root {
   width: 100%;
   height: 100%;
   overflow: hidden;
+}
+
+::selection {
+  background: var(--accent-weak-2);
+}
+
+/* Quiet scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollthumb) transparent;
+}
+*::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--scrollthumb);
+  border-radius: 99px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--border-strong);
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Karar detayından dönünce, çıkılan satırı ~1 sn vurgulayıp soldurur. */
+@keyframes rowFlash {
+  from { background-color: var(--accent-weak-2); }
+  to { background-color: transparent; }
+}
+.row-flash {
+  animation: rowFlash 3s var(--ease);
+}
+
+/* Anahtar kelime vurgusu (serif okuma sütunu + listeler) */
+mark.hl {
+  background: var(--hl-bg);
+  color: var(--hl-text);
+  padding: 0 2px;
+  border-radius: 3px;
+  font-weight: 500;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
 }

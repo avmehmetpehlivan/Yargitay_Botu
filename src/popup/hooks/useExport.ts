@@ -33,5 +33,7 @@ export function useExport() {
     }
   }, []);
 
-  return { state, exportWord };
+  const reset = useCallback(() => setState('idle'), []);
+
+  return { state, exportWord, reset };
 }

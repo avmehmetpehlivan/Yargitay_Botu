@@ -59,7 +59,7 @@ export type BackgroundToContent =
 // ─── Discriminated union: Content Script → Background ────────────────────────
 
 export type ContentToBackground =
-  | { action: 'METADATA_BATCH'; decisions: DecisionMetadata[]; recordsTotal: number }
+  | { action: 'METADATA_BATCH'; decisions: DecisionMetadata[]; recordsTotal: number; hasMore: boolean }
   | { action: 'FULLTEXT_BATCH'; decisions: Decision[]; batchIndex: number }
   | { action: 'FULLTEXT_PROGRESS'; done: number; total: number; throttled: boolean }
   | { action: 'CONTENT_COMPLETE' }

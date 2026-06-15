@@ -30,6 +30,10 @@ export class MessageRouter {
   // ─── Popup mesajları ──────────────────────────────────────────────────────
 
   private async dispatch(msg: PopupToBackground, sendResponse: SendResponse): Promise<void> {
+    // SW yeniden başlamış olabilir → job'ı oturum-belleğinden geri yükle (loadMore,
+    // GET_STATUS, FETCH_FULLTEXTS, PREVIEW sonrası bellek boşsa kurtarır).
+    await this.orchestrator.hydrate();
+
     switch (msg.action) {
       case 'START_SCRAPING': {
         if (this.orchestrator.isRunning()) {

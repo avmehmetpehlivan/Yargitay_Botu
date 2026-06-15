@@ -20,16 +20,15 @@ export function usePreview() {
     setState('loading');
     setText('');
 
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab?.id) {
-      setState('offsite');
-      return;
-    }
+    // Aktif sekmeye değil, açık Yargıtay sekmesine bak (yan panel kalıcı). Cache
+    // varsa background sekme olmadan da döndürür; o yüzden bulunmasa da deneriz.
+    const tabs = await chrome.tabs.query({ url: `*://${YARGITAY_HOST}/*` });
+    const tabId = tabs.find((t) => t.id != null)?.id ?? -1;
 
     const res = (await chrome.runtime.sendMessage({
       action: MSG.PREVIEW_FULLTEXT,
       id,
-      tabId: tab.id,
+      tabId,
     })) as PreviewResponse | undefined;
 
     if (res?.rateLimited) setState('ratelimited');
@@ -37,8 +36,8 @@ export function usePreview() {
       setText(res.fullText);
       setState('done');
     } else {
-      // Metin boş: cache'te yok + aktif sekme Yargıtay değilse çekilemez.
-      setState(tab.url?.includes(YARGITAY_HOST) ? 'empty' : 'offsite');
+      // Metin boş: cache'te yok + açık Yargıtay sekmesi yoksa çekilemez.
+      setState(tabId === -1 ? 'offsite' : 'empty');
     }
   }, []);
 

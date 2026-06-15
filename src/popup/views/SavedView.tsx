@@ -2,14 +2,13 @@ import { useEffect } from 'react';
 import { useSavedStore } from '../store/saved.store';
 import { useSearchDraftStore } from '../store/searchDraft.store';
 import { SavedSearchCard } from '../components/SavedSearchCard';
+import { EmptyState } from '../components/EmptyState';
 import type { SavedSearch } from '../../shared/types/SavedSearch';
 import type { View } from '../App';
 
-interface SavedViewProps {
-  onNavigate: (v: View) => void;
-}
+const LIB = 'mx-auto w-full max-w-[920px] px-[clamp(20px,5vw,56px)] pb-20 pt-[26px]';
 
-export function SavedView({ onNavigate }: SavedViewProps) {
+export function SavedView({ onNavigate }: { onNavigate: (v: View) => void }) {
   const { items, isLoaded, load, updateLabel, remove } = useSavedStore();
   const setDraft = useSearchDraftStore((s) => s.setDraft);
 
@@ -17,49 +16,32 @@ export function SavedView({ onNavigate }: SavedViewProps) {
     if (!isLoaded) load();
   }, [isLoaded, load]);
 
-  if (!isLoaded) {
-    return <div className="p-4 text-xs text-slate-400 text-center">Yükleniyor…</div>;
-  }
-
-  if (!items.length) {
-    return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-2 p-8 text-center text-slate-400">
-        <span className="text-3xl">⭐</span>
-        <p className="text-sm">Kayıtlı arama yok.</p>
-        <p className="text-xs">Sonuçlar ekranından aramaları kaydet.</p>
-      </div>
-    );
-  }
-
-  // Otomatik aratma YOK — kriterleri arama ekranına yükle, kullanıcı düzenleyip
-  // "Toplamaya Başla"ya kendisi bassın.
   const handleLoad = (saved: SavedSearch) => {
     setDraft(saved.criteria ?? { keywords: saved.keywords });
     onNavigate('search');
   };
 
   return (
-    <div className="flex flex-col gap-2 p-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-slate-800">Kayıtlı Aramalar</h2>
-        <span className="text-xs text-slate-400">{items.length} kayıt</span>
+    <div className={LIB}>
+      <div className="mb-[22px] flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-[19px] font-semibold tracking-[-0.02em] text-fg">Kayıtlı Aramalar</h2>
+          <p className="mt-[5px] max-w-[460px] text-[12.5px] leading-relaxed text-fg-3">
+            "Aramaya Yükle" kriterleri arama ekranına taşır; düzenleyip kendiniz başlatırsınız.
+          </p>
+        </div>
+        <span className="shrink-0 pt-1 font-mono text-xs tabular-nums text-fg-3">{items.length} kayıt</span>
       </div>
-      <p className="text-xs text-slate-500">
-        "Aramaya Yükle" ile kriterler arama ekranına taşınır; düzenleyip
-        "Toplamaya Başla"ya kendiniz basarsınız.
-      </p>
 
-      <div className="space-y-2">
-        {items.map((saved) => (
-          <SavedSearchCard
-            key={saved.id}
-            saved={saved}
-            onLoad={handleLoad}
-            onUpdateLabel={updateLabel}
-            onDelete={remove}
-          />
-        ))}
-      </div>
+      {items.length === 0 ? (
+        <EmptyState icon="star" title="Kayıtlı arama yok" body="Sonuçlar ekranından aramaları kaydedin." />
+      ) : (
+        <div className="flex flex-col gap-2.5">
+          {items.map((saved) => (
+            <SavedSearchCard key={saved.id} saved={saved} onLoad={handleLoad} onUpdateLabel={updateLabel} onDelete={remove} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

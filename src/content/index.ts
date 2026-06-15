@@ -54,7 +54,10 @@ async function scrapeBlock(criteria: SearchCriteria, startOffset: number): Promi
 
   const pageNumber = Math.floor(startOffset / API_PAGE_SIZE) + 1;
   const { decisions, recordsTotal } = await searchPage(criteria, pageNumber, API_PAGE_SIZE);
-  send({ action: 'METADATA_BATCH', decisions, recordsTotal });
+  // Tam sayfa (==100) gelmediyse sunucu bu sorgu için sonuç penceresini bitirmiştir
+  // (recordsTotal şişkin olabilir → ona güvenme). hasMore=false ile lazy-load durur.
+  const hasMore = decisions.length >= API_PAGE_SIZE && startOffset + decisions.length < recordsTotal;
+  send({ action: 'METADATA_BATCH', decisions, recordsTotal, hasMore });
 }
 
 // ─── Faz 2: Fulltext (yavaş) — /getDokuman ─────────────────────────────────────

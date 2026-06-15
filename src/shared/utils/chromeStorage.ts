@@ -3,6 +3,7 @@ import { DEFAULT_SETTINGS } from '../types/Storage';
 import { STORAGE_KEYS } from '../constants/storage';
 import type { SearchHistoryItem } from '../types/SearchResult';
 import type { SavedSearch } from '../types/SavedSearch';
+import type { DecisionCategory, SavedDecision } from '../types/Collection';
 import type { UserSettings } from '../types/Storage';
 
 // ─── Temel okuma/yazma ───────────────────────────────────────────────────────
@@ -62,6 +63,48 @@ export async function updateSavedSearch(
 export async function removeSavedSearch(id: string): Promise<void> {
   const list = await getSavedSearches();
   await set(STORAGE_KEYS.savedSearches, list.filter((s) => s.id !== id));
+}
+
+// ─── Decision Categories (koleksiyonlar) ──────────────────────────────────────
+
+export async function getCategories(): Promise<DecisionCategory[]> {
+  return (await get(STORAGE_KEYS.decisionCategories)) ?? [];
+}
+
+export async function putCategory(cat: DecisionCategory): Promise<void> {
+  const list = await getCategories();
+  const deduped = list.filter((c) => c.id !== cat.id);
+  await set(STORAGE_KEYS.decisionCategories, [...deduped, cat]);
+}
+
+/** Kategoriyi siler; bu kategori üyeliğini tüm kararlardan kaldırır, başka
+ *  kategorisi kalmayan kararları tamamen siler. */
+export async function removeCategory(id: string): Promise<void> {
+  const cats = await getCategories();
+  await set(STORAGE_KEYS.decisionCategories, cats.filter((c) => c.id !== id));
+  const saved = await getSavedDecisions();
+  const updated = saved
+    .map((d) => ({ ...d, categoryIds: d.categoryIds.filter((c) => c !== id) }))
+    .filter((d) => d.categoryIds.length > 0);
+  await set(STORAGE_KEYS.savedDecisions, updated);
+}
+
+// ─── Saved Decisions (kaydedilen kararlar) ─────────────────────────────────────
+
+export async function getSavedDecisions(): Promise<SavedDecision[]> {
+  return (await get(STORAGE_KEYS.savedDecisions)) ?? [];
+}
+
+/** Kararı kaydeder/günceller (id'ye göre tekil — kategori değişikliği = taşıma). */
+export async function putSavedDecision(item: SavedDecision): Promise<void> {
+  const list = await getSavedDecisions();
+  const deduped = list.filter((d) => d.id !== item.id);
+  await set(STORAGE_KEYS.savedDecisions, [...deduped, item]);
+}
+
+export async function removeSavedDecision(id: string): Promise<void> {
+  const list = await getSavedDecisions();
+  await set(STORAGE_KEYS.savedDecisions, list.filter((d) => d.id !== id));
 }
 
 // ─── Settings ────────────────────────────────────────────────────────────────

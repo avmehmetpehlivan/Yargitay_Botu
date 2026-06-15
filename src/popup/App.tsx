@@ -1,62 +1,82 @@
-import { useState } from 'react';
-import { Navigation } from './components/Navigation';
+import { useState, useEffect } from 'react';
+import { NavRail } from './components/NavRail';
+import { TopBar, OriginChip } from './components/TopBar';
+import { Toaster } from './components/Toaster';
 import { SearchView }  from './views/SearchView';
 import { ResultsView } from './views/ResultsView';
 import { HistoryView } from './views/HistoryView';
 import { SavedView }   from './views/SavedView';
+import { CollectionsView } from './views/CollectionsView';
 import { SettingsView } from './views/SettingsView';
-import appIcon from '../../extension-icon.svg';
+import { useScrapingStore } from './store/scraping.store';
+import { useCollectionsStore } from './store/collections.store';
+import { useUiStore } from './store/ui.store';
 
-export type View = 'search' | 'results' | 'history' | 'saved' | 'settings';
+export type View = 'search' | 'results' | 'collections' | 'history' | 'saved' | 'settings';
+
+const TITLES: Record<View, { title: string; sub: string }> = {
+  search:      { title: 'Karar Ara', sub: 'Yeni arama…' },
+  results:     { title: 'Sonuçlar', sub: '' },
+  collections: { title: 'Koleksiyon', sub: 'Kayıtlı kararlar' },
+  history:     { title: 'Geçmiş', sub: 'Son aramalar' },
+  saved:       { title: 'Kayıtlı', sub: 'Arama şablonları' },
+  settings:    { title: 'Ayarlar', sub: 'Görünüm ve veri' },
+};
 
 export function App() {
   const [activeView, setActiveView] = useState<View>('search');
+  const job = useScrapingStore((s) => s.job);
+  const hasSearch = job != null;
+  const savedCount = useCollectionsStore((s) => s.saved.length);
+  const loadCollections = useCollectionsStore((s) => s.load);
+  const { theme, toggleTheme, init } = useUiStore();
+
+  // Tema/accent'i <html>'e uygula + koleksiyonları yükle (açılışta).
+  useEffect(() => { init(); }, [init]);
+  useEffect(() => { void loadCollections(); }, [loadCollections]);
+
+  // Sonuçlar temizlenirse ve hâlâ o sekmedeysek aramaya dön.
+  useEffect(() => {
+    if (!hasSearch && activeView === 'results') setActiveView('search');
+  }, [hasSearch, activeView]);
+
+  // Üst çubuk başlığı/alt-başlığı.
+  const meta = TITLES[activeView];
+  let sub = meta.sub;
+  if (activeView === 'results' && job?.criteria) {
+    const inc = (job.criteria.keywords ?? []).map((k) => `"${k}"`).join(' ');
+    const exc = job.criteria.excludeKeywords ?? [];
+    sub = inc + (exc.length ? ` · hariç: ${exc.join(', ')}` : '');
+  }
 
   return (
-    <div className="flex h-screen w-full flex-col bg-slate-50">
-      {/* Header */}
-      <header className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3">
-        <img src={appIcon} alt="" className="h-8 w-8 shrink-0" />
-        <div className="min-w-0 flex-1">
-          <h1 className="truncate text-sm font-semibold text-slate-900">Yargıtay Karar Arama Asistanı</h1>
-          <p className="truncate text-xs text-slate-400">karararama.yargitay.gov.tr</p>
-        </div>
-        <button
-          onClick={() => setActiveView('settings')}
-          title="Ayarlar"
-          aria-label="Ayarlar"
-          className={
-            'shrink-0 rounded-lg p-1.5 transition-colors ' +
-            (activeView === 'settings'
-              ? 'bg-brand-50 text-brand-700'
-              : 'text-slate-400 hover:bg-slate-100 hover:text-slate-600')
-          }
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="3" />
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-          </svg>
-        </button>
-      </header>
+    <div className="flex h-screen w-full bg-bg font-ui text-fg">
+      <NavRail
+        view={activeView}
+        onNavigate={setActiveView}
+        theme={theme}
+        onToggleTheme={toggleTheme}
+        showResults={hasSearch}
+        resultCount={job?.recordsTotal ?? job?.decisions.length ?? null}
+        savedCount={savedCount}
+      />
 
-      {/* Aktif görünüm. Yükseklik flex zinciriyle SINIRLI tutulur (yüzde yok):
-          wrapper main'i tam doldurur ve kendisi kaydırılabilir → uzun formlar/
-          listeler burada kaydırılır, uygulama boyu panel viewport'unu AŞMAZ.
-          ResultsView ise flex-1 ile wrapper'ı doldurup listesini KENDİ içinde
-          kaydırır (bkz. ResultsView). Yatayda: dar panelde max-w-xl ortalanır,
-          ≥800px'te split düzen için max-w-5xl'e genişler. */}
-      <main className="flex min-h-0 flex-1 flex-col">
-        <div className="mx-auto flex w-full min-h-0 max-w-xl flex-1 flex-col overflow-y-auto min-[800px]:max-w-5xl">
-          {activeView === 'search'   && <SearchView  onNavigate={setActiveView} />}
-          {activeView === 'results'  && <ResultsView />}
-          {activeView === 'history'  && <HistoryView />}
-          {activeView === 'saved'    && <SavedView   onNavigate={setActiveView} />}
-          {activeView === 'settings' && <SettingsView />}
+      <main className="flex min-w-0 flex-1 flex-col">
+        <TopBar title={meta.title} sub={sub || undefined} right={<OriginChip />} />
+
+        {/* Viewport: ResultsView flex-1 ile doldurup listesini kendi içinde kaydırır;
+            diğer (doğal yükseklikli) view'ler taşarsa burada kaydırılır. */}
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+          {activeView === 'search'      && <SearchView  onNavigate={setActiveView} />}
+          {activeView === 'results'     && <ResultsView onNavigate={setActiveView} />}
+          {activeView === 'collections' && <CollectionsView />}
+          {activeView === 'history'     && <HistoryView onNavigate={setActiveView} />}
+          {activeView === 'saved'       && <SavedView   onNavigate={setActiveView} />}
+          {activeView === 'settings'    && <SettingsView />}
         </div>
       </main>
 
-      {/* Alt nav */}
-      <Navigation active={activeView} onSelect={setActiveView} />
+      <Toaster />
     </div>
   );
 }

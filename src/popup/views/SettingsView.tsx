@@ -1,12 +1,43 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { clsx } from 'clsx';
 import { getSettings, saveSettings } from '../../shared/utils/chromeStorage';
 import { countCache, clearCache } from '../../shared/utils/fulltextCache';
 import { DEFAULT_SETTINGS } from '../../shared/types/Storage';
 import { useHistoryStore } from '../store/history.store';
-import { Button } from '../components/common/Button';
+import { useUiStore, type Accent } from '../store/ui.store';
+import { Segmented } from '../components/Segmented';
+import { Toggle } from '../components/Toggle';
+import { Icon } from '../components/Icon';
+
+const LIB = 'mx-auto w-full max-w-[920px] px-[clamp(20px,5vw,56px)] pb-20 pt-[26px]';
+
+const ACCENTS: { id: Accent; name: string; desc: string; hex: string; weak: string }[] = [
+  {
+    id: 'teal',
+    name: 'Sakin Teal',
+    desc: 'Sessiz mürekkep teali',
+    hex: '#2c7a72',
+    weak: 'rgba(44,122,114,0.12)',
+  },
+  {
+    id: 'neutral',
+    name: 'Nötr Gri',
+    desc: 'Tamamen sessiz, neredeyse renksiz',
+    hex: '#34342f',
+    weak: 'rgba(52,52,47,0.10)',
+  },
+  {
+    id: 'blue',
+    name: 'İnce Mavi',
+    desc: 'Mürekkep mavisi vurgu',
+    hex: '#2f64d8',
+    weak: 'rgba(47,100,216,0.12)',
+  },
+];
 
 export function SettingsView() {
   const { clear: clearHistoryStore } = useHistoryStore();
+  const { theme, accent, setTheme, setAccent } = useUiStore();
   const [autoSave, setAutoSave] = useState(DEFAULT_SETTINGS.autoSaveHistory);
   const [cacheCount, setCacheCount] = useState<number | null>(null);
   const [busy, setBusy] = useState<'cache' | 'history' | null>(null);
@@ -14,7 +45,9 @@ export function SettingsView() {
 
   useEffect(() => {
     getSettings().then((s) => setAutoSave(s.autoSaveHistory));
-    countCache().then(setCacheCount).catch(() => setCacheCount(null));
+    countCache()
+      .then(setCacheCount)
+      .catch(() => setCacheCount(null));
   }, []);
 
   const toggleAutoSave = async () => {
@@ -23,9 +56,13 @@ export function SettingsView() {
     await saveSettings({ ...s, autoSaveHistory: next });
     setAutoSave(next);
   };
-
   const onClearCache = async () => {
-    if (!confirm('Önbellekteki tüm karar metinleri silinecek. Geçmiş ve kayıtlı aramalar etkilenmez. Devam edilsin mi?')) return;
+    if (
+      !confirm(
+        'Önbellekteki tüm karar metinleri silinecek. Geçmiş ve kayıtlı aramalar etkilenmez. Devam edilsin mi?',
+      )
+    )
+      return;
     setBusy('cache');
     try {
       await clearCache();
@@ -35,9 +72,9 @@ export function SettingsView() {
       setBusy(null);
     }
   };
-
   const onClearHistory = async () => {
-    if (!confirm('Tüm arama geçmişi silinecek. Kayıtlı aramalar etkilenmez. Devam edilsin mi?')) return;
+    if (!confirm('Tüm arama geçmişi silinecek. Kayıtlı aramalar etkilenmez. Devam edilsin mi?'))
+      return;
     setBusy('history');
     try {
       await clearHistoryStore();
@@ -47,59 +84,116 @@ export function SettingsView() {
     }
   };
 
+  const clearBtn =
+    'rounded-md border border-line-2 bg-surface px-3 py-1.5 text-xs font-medium text-fg transition-colors hover:bg-surface-2 disabled:opacity-50';
+
   return (
-    <div className="flex flex-col gap-4 p-4">
-      <h2 className="text-sm font-semibold text-slate-800">Ayarlar</h2>
+    <div className={LIB}>
+      <div className="mb-[22px]">
+        <h2 className="text-[19px] font-semibold tracking-[-0.02em] text-fg">Ayarlar</h2>
+        <p className="mt-[5px] text-[12.5px] leading-relaxed text-fg-3">
+          Görünüm ve veri tercihleri. Her şey cihazınızda kalır.
+        </p>
+      </div>
 
-      {/* Otomatik geçmiş kaydı */}
-      <Row
-        title="Aramaları geçmişe kaydet"
-        desc="Her arama otomatik olarak Geçmiş sekmesine eklenir."
-      >
-        <Toggle on={autoSave} onClick={toggleAutoSave} />
-      </Row>
+      {/* Accent karşılaştırma */}
+      <div className="mb-5">
+        <p className="text-[13.5px] font-semibold text-fg">Tema tercihi</p>
+        <div className="grid grid-cols-1 gap-3 min-[640px]:grid-cols-3">
+          {ACCENTS.map((a) => (
+            <button
+              key={a.id}
+              onClick={() => setAccent(a.id)}
+              className={clsx(
+                'relative flex flex-col gap-3 rounded-lg border-[1.5px] bg-surface p-3.5 text-left transition-colors',
+                accent === a.id
+                  ? 'border-accent shadow-[0_0_0_3px_var(--accent-weak)]'
+                  : 'border-line hover:border-line-strong',
+              )}
+            >
+              {accent === a.id && (
+                <span
+                  className="absolute right-3 top-3 grid h-[18px] w-[18px] place-items-center rounded-full text-white"
+                  style={{ background: a.hex }}
+                >
+                  <Icon name="check" size={11} stroke={2.6} />
+                </span>
+              )}
+              <div className="flex items-center gap-2 rounded-md border border-line bg-surface-2 p-3">
+                <span
+                  className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-lg text-[13px] font-semibold text-white"
+                  style={{ background: a.hex }}
+                >
+                  Aa
+                </span>
+                <span
+                  className="rounded-md px-2 py-0.5 text-[11px] font-semibold"
+                  style={{ background: a.weak, color: a.hex }}
+                >
+                  işe iade
+                </span>
+                <span className="h-[5px] min-w-[16px] flex-1 overflow-hidden rounded-full bg-line-2">
+                  <i className="block h-full w-[62%] rounded-full" style={{ background: a.hex }} />
+                </span>
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[13px] font-semibold text-fg">{a.name}</span>
+                <span className="text-[11px] leading-snug text-fg-3">{a.desc}</span>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
 
-      {/* Önbellek */}
-      <Row
-        title="Karar metni önbelleği"
-        desc={
-          cacheCount == null
-            ? 'Çekilen karar metinleri tekrar indirilmemek için diskte tutulur.'
-            : `${cacheCount.toLocaleString('tr-TR')} karar metni önbellekte. Sadece bu metinler silinir; geçmiş/kayıtlı aramalar etkilenmez.`
-        }
-      >
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={onClearCache}
-          loading={busy === 'cache'}
-          disabled={busy !== null || cacheCount === 0}
+      {/* Ayar listesi */}
+      <div className="overflow-hidden rounded-lg border border-line">
+        <SettingsRow title="Tema" desc="Çalışma alanının görünümü.">
+          <Segmented
+            size="sm"
+            value={theme}
+            onChange={setTheme}
+            options={[
+              { value: 'light', label: 'Açık' },
+              { value: 'dark', label: 'Koyu' },
+            ]}
+          />
+        </SettingsRow>
+        <SettingsRow
+          title="Aramaları geçmişe kaydet"
+          desc="Her arama otomatik olarak Geçmiş'e eklenir."
         >
-          Temizle
-        </Button>
-      </Row>
-
-      {/* Geçmiş */}
-      <Row title="Arama geçmişi" desc="Geçmiş sekmesindeki tüm kayıtları siler.">
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={onClearHistory}
-          loading={busy === 'history'}
-          disabled={busy !== null}
+          <Toggle on={autoSave} onClick={toggleAutoSave} />
+        </SettingsRow>
+        <SettingsRow
+          title="Karar metni önbelleği"
+          desc={
+            cacheCount == null
+              ? 'Çekilen karar metinleri tekrar indirilmemek için diskte tutulur.'
+              : `${cacheCount.toLocaleString('tr-TR')} karar metni önbellekte. Yalnızca karar detay metinleri silinir.`
+          }
         >
-          Temizle
-        </Button>
-      </Row>
+          <button
+            onClick={onClearCache}
+            disabled={busy !== null || cacheCount === 0}
+            className={clearBtn}
+          >
+            Temizle
+          </button>
+        </SettingsRow>
+        <SettingsRow title="Arama geçmişi" desc="Tüm geçmişi temizler.">
+          <button onClick={onClearHistory} disabled={busy !== null} className={clearBtn}>
+            Temizle
+          </button>
+        </SettingsRow>
+      </div>
 
-      {note && <p className="text-center text-xs text-green-600">{note}</p>}
+      {note && <p className="mt-3 text-center text-xs text-accent-text">{note}</p>}
 
-      {/* Hakkında */}
-      <div className="mt-1 flex items-center justify-between px-1 text-xs text-slate-400">
+      <div className="mt-[18px] flex items-center justify-between px-1 font-mono text-[11.5px] text-fg-faint">
         <span>Sürüm {chrome.runtime.getManifest().version}</span>
         <button
-          className="text-brand-700 hover:underline"
           onClick={() => chrome.tabs.create({ url: chrome.runtime.getURL('privacy.html') })}
+          className="text-accent-text hover:underline"
         >
           Gizlilik Politikası
         </button>
@@ -108,33 +202,22 @@ export function SettingsView() {
   );
 }
 
-function Row({ title, desc, children }: { title: string; desc: string; children: ReactNode }) {
+function SettingsRow({
+  title,
+  desc,
+  children,
+}: {
+  title: string;
+  desc: string;
+  children: ReactNode;
+}) {
   return (
-    <div className="flex items-start justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3">
+    <div className="flex items-center justify-between gap-4 border-b border-line bg-surface px-[18px] py-4 last:border-b-0">
       <div className="min-w-0">
-        <p className="text-sm font-medium text-slate-800">{title}</p>
-        <p className="mt-0.5 text-xs text-slate-500">{desc}</p>
+        <p className="text-[13.5px] font-semibold text-fg">{title}</p>
+        <p className="mt-1 text-xs leading-relaxed text-fg-3">{desc}</p>
       </div>
       <div className="shrink-0">{children}</div>
     </div>
-  );
-}
-
-function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className={
-        'relative h-5 w-9 rounded-full transition-colors ' + (on ? 'bg-brand-700' : 'bg-slate-300')
-      }
-      aria-pressed={on}
-    >
-      <span
-        className={
-          'absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all ' +
-          (on ? 'left-[18px]' : 'left-0.5')
-        }
-      />
-    </button>
   );
 }
