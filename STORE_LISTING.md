@@ -15,7 +15,7 @@ Yargıtay Karar Arama Asistanı
 Türkçe
 
 ## Kısa açıklama (manifest.description ile aynı, ≤132 karakter)
-Yargıtay karar arama sitesinde kararları arayın, tam metnini okuyun, oluşturduğunuz koleksiyonlarda saklayın ve PDF/Word olarak indirin.
+Yargıtay karar arama sitesinde kararları arayın, tam metnini okuyun, koleksiyonlarda saklayın ve PDF/Word olarak indirin.
 
 ## Detaylı açıklama (mağaza "Description" alanı)
 Yargıtay Karar Arama Asistanı, avukatların karararama.yargitay.gov.tr üzerindeki Yargıtay
