@@ -116,7 +116,8 @@ export function ResultsView({ onNavigate }: { onNavigate: (v: View) => void }) {
       : loadedPages;
   const exhaustedBelowTotal = !isRefining && !job?.canLoadMore && decisions.length < recordsTotal;
   const safePage = Math.min(page, totalPages);
-  const pageRows = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
+  const pageStart = (safePage - 1) * pageSize;
+  const pageRows = filtered.slice(pageStart, pageStart + pageSize);
   const atLimit = selected.size >= LIMIT;
   const isLoadingMore = job?.phase === 'metadata' && decisions.length > 0;
 
@@ -429,9 +430,10 @@ export function ResultsView({ onNavigate }: { onNavigate: (v: View) => void }) {
 
           {/* Satırlar */}
           <div className="min-h-0 flex-1 overflow-y-auto">
-            {pageRows.map((d) => (
+            {pageRows.map((d, i) => (
               <DecisionRow
                 key={d.id}
+                index={pageStart + i + 1}
                 d={d}
                 checked={selected.has(d.id)}
                 active={preview.previewId === d.id}
@@ -575,6 +577,7 @@ function FabBtn({ variant, icon, label, onClick }: { variant: 'primary' | 'outli
 
 /* ── Karar satırı ── */
 function DecisionRow({
+  index,
   d,
   checked,
   active,
@@ -586,6 +589,7 @@ function DecisionRow({
   onOpen,
   onSave,
 }: {
+  index: number;
   d: Decision;
   checked: boolean;
   active: boolean;
@@ -609,6 +613,14 @@ function DecisionRow({
         recent && !active && 'row-flash',
       )}
     >
+      <span
+        className={clsx(
+          'mt-px min-w-[1.5rem] shrink-0 select-none text-right font-mono text-[11px] tabular-nums leading-[19px]',
+          active ? 'text-accent-text' : 'text-fg-faint',
+        )}
+      >
+        {index}
+      </span>
       <button
         onClick={(e) => {
           e.stopPropagation();
